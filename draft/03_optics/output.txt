@@ -1,0 +1,4 @@
+Stage 3: optical encoder
+Low channel: size=20x28, min=0.0494, max=0.1076, mean=0.0756
+High channel: size=20x28, min=0.0969, max=0.1615, mean=0.1184
+Combined exposure: size=20x28, min=0.1846, max=0.2110, mean=0.1940
