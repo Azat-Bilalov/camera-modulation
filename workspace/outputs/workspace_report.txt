@@ -1,0 +1,7 @@
+Workspace integration run
+Spectral bands: 16
+Optical channels: ['low', 'high']
+Sensor exposure: size=32x40, min=0.1846, max=0.2110, mean=0.1972
+Charge: size=32x40, min=369.2396, max=421.9190, mean=394.4277
+Digital frame: size=32x40, min=420.0000, max=480.0000, mean=448.3000
+Saved image: /Users/azat/Documents/study/mospolytech/image_processing/camera-modulation/workspace/outputs/final_preview.bmp
