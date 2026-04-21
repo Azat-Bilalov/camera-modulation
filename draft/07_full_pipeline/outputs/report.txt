@@ -1,0 +1,8 @@
+Final pipeline run
+Spectral bands: 16
+Scene energy: size=32x40, min=0.2000, max=0.2244, mean=0.2111
+Sensor exposure: size=32x40, min=0.1846, max=0.2110, mean=0.1972
+Charge: size=32x40, min=369.2396, max=421.9190, mean=394.4277
+Digital frame: size=32x40, min=420.0000, max=480.0000, mean=448.3000
+Image: size=32x40, min=0.0000, max=255.0000, mean=120.3000
+Saved image: /Users/azat/Documents/study/mospolytech/image_processing/camera-modulation/draft/07_full_pipeline/outputs/final_frame.bmp
