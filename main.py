@@ -1,5 +1,3 @@
-from workspace.main import main as rm
-
 def main():
     print("Hello from camera-modulation!")
 
