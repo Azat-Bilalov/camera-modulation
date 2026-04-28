@@ -4,7 +4,7 @@ from workspace.models import OpticalChannel, OpticsConfig, SensorExposure, Spect
 from workspace.shared import split_optical_channels
 
 
-def build_default_optics_config() -> OpticsConfig:
+def build_default_optics_config(threshold: int) -> OpticsConfig:
     """
     Возвращает стандартную конфигурацию оптического кодера.
 
@@ -22,6 +22,7 @@ def build_default_optics_config() -> OpticsConfig:
         channel_count=2,
         split_strategy="low-high spectral split",
         mask_pattern="checkerboard amplitude mask",
+        split_threshold_nm=threshold,
         transmission_low=0.95,
         transmission_high=0.90,
         recombination_mode="sum",
