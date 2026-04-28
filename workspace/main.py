@@ -20,7 +20,7 @@ from workspace.sensor_adc.stubs import (
     build_default_frame,
     build_default_sensor_config,
 )
-from workspace.visualization.stubs import (
+from workspace.visualization.visualization import (
     build_default_export_config,
     build_default_preview,
     build_default_reconstruction_config,
