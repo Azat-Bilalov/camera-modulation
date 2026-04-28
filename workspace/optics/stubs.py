@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from workspace.models import OpticalChannel, OpticsConfig, SensorExposure, SpectralImage
 from workspace.shared import split_optical_channels
+from workspace.optics.optics_transformer import convert_scene_to_channels, convert_scene_to_sensor as convert_scene_to_sensor_model
 
 
-def build_default_optics_config(threshold: int) -> OpticsConfig:
+def build_default_optics_config() -> OpticsConfig:
     """
     Возвращает стандартную конфигурацию оптического кодера.
 
@@ -22,7 +23,6 @@ def build_default_optics_config(threshold: int) -> OpticsConfig:
         channel_count=2,
         split_strategy="low-high spectral split",
         mask_pattern="checkerboard amplitude mask",
-        split_threshold_nm=threshold,
         transmission_low=0.95,
         transmission_high=0.90,
         recombination_mode="sum",
@@ -46,7 +46,10 @@ def build_default_channels(scene: SpectralImage, optics_config: OpticsConfig) ->
     - `draft/lib.py` -> `apply_optical_encoder`
     """
 
-    optical_data = split_optical_channels(scene.data, scene.spectral_axis)
+    optical_data = convert_scene_to_channels(
+        scene=scene,
+        optics_config=optics_config,
+    )
     return [
         OpticalChannel(
             channel_id="low",
@@ -65,6 +68,22 @@ def build_default_channels(scene: SpectralImage, optics_config: OpticsConfig) ->
             description="Высокочастотный или длинноволновый канал заглушки",
         ),
     ]
+
+def convert_scene_to_sensor(scene: SpectralImage, optics_config: OpticsConfig) -> SensorExposure:
+    """
+    Преобразует сцену в итоговую экспозицию сенсора.
+
+    Input:
+    - `scene`: спектральная карта сцены.
+    - `optics_config`: конфигурация оптики.
+
+    Output:
+    - `SensorExposure`, согласованный с модулем `sensor_adc`.
+    """
+
+    return convert_scene_to_sensor_model(scene=scene, optics_config=optics_config)
+
+
 
 
 def build_default_exposure(scene: SpectralImage, optics_config: OpticsConfig) -> SensorExposure:

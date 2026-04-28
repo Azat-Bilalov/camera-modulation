@@ -127,7 +127,6 @@ class OpticsConfig:
 
     channel_count: int
     split_strategy: str
-    split_threshold_nm: float
     mask_pattern: str
     transmission_low: float
     transmission_high: float
