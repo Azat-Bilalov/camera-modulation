@@ -1,10 +1,10 @@
 """Рабочее место роли: модель сцены и источника.
 Гостев М.А."""
 
-from dataclasses import dataclass
-from typing import List
 import re
+from dataclasses import dataclass
 from pathlib import Path
+from typing import List
 
 
 @dataclass
@@ -43,35 +43,29 @@ def read_spectrum_from_txt(file_path: str) -> List[float]:
 
 def build_axis_by_step(start: float, step: float, count: int) -> SpectralAxis:
     wave = [start + i * step for i in range(count)]
-    return SpectralAxis(
-        wave=wave,
-        start=wave[0],
-        stop=wave[-1],
-        bands_count=len(wave)
-    )
+    return SpectralAxis(wave=wave, start=wave[0], stop=wave[-1], bands_count=len(wave))
 
 
 def build_optic_input(
-    axis: SpectralAxis,
-    source: SourceConfig,
-    obj: ObjectConfig
+    axis: SpectralAxis, source: SourceConfig, obj: ObjectConfig
 ) -> SceneSignal:
 
     if len(source.spectrum) != axis.bands_count:
-        raise ValueError("Количество значений спектра не совпадает с количеством каналов.")
+        raise ValueError(
+            "Количество значений спектра не совпадает с количеством каналов."
+        )
 
     if len(obj.reflectance) != axis.bands_count:
-        raise ValueError("Количество коэффициентов отражения не совпадает с количеством каналов.")
+        raise ValueError(
+            "Количество коэффициентов отражения не совпадает с количеством каналов."
+        )
 
     signal = [
         round(source.spectrum[i] * obj.reflectance[i], 4)
         for i in range(axis.bands_count)
     ]
 
-    return SceneSignal(
-        spectral_axis=axis,
-        input_signal=signal
-    )
+    return SceneSignal(spectral_axis=axis, input_signal=signal)
 
 
 if __name__ == "__main__":
@@ -82,11 +76,7 @@ if __name__ == "__main__":
 
     radiation = read_spectrum_from_txt(file_path)
 
-    spectral_axis = build_axis_by_step(
-        start=380.0,
-        step=10.0,
-        count=len(radiation)
-    )
+    spectral_axis = build_axis_by_step(start=380.0, step=10.0, count=len(radiation))
 
     # Пока отражение считаем единичным
     coef = [1.0 for _ in radiation]
@@ -94,11 +84,7 @@ if __name__ == "__main__":
     source_config = SourceConfig(spectrum=radiation)
     object_config = ObjectConfig(reflectance=coef)
 
-    optic_input = build_optic_input(
-        spectral_axis,
-        source_config,
-        object_config
-    )
+    optic_input = build_optic_input(spectral_axis, source_config, object_config)
 
     print(f"Начальная длина волны: {optic_input.spectral_axis.start} нм")
     print(f"Конечная длина волны: {optic_input.spectral_axis.stop} нм")

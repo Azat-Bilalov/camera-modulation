@@ -50,7 +50,9 @@ def build_default_source(axis: SpectralAxis) -> SourceConfig:
     )
 
 
-def build_default_object(axis: SpectralAxis, height: int = 32, width: int = 40) -> ObjectConfig:
+def build_default_object(
+    axis: SpectralAxis, height: int = 32, width: int = 40
+) -> ObjectConfig:
     """
     Строит тестовый объект с картой отражения, совместимой с draft-примерами.
 
@@ -66,7 +68,9 @@ def build_default_object(axis: SpectralAxis, height: int = 32, width: int = 40) 
     - `draft/02_scene/example.py`
     """
 
-    reflectance_map = build_default_reflectance_map(height=height, width=width, axis=axis)
+    reflectance_map = build_default_reflectance_map(
+        height=height, width=width, axis=axis
+    )
     return ObjectConfig(
         object_name="test-target",
         height=height,
