@@ -1,8 +1,13 @@
 from __future__ import annotations
 
-from workspace.models import OpticalChannel, OpticsConfig, SensorExposure, SpectralImage
-from workspace.shared import split_optical_channels
-from workspace.optics.optics_transformer import convert_scene_to_channels, convert_scene_to_sensor as convert_scene_to_sensor_model
+from typing import Any
+
+from workspace.models import OpticalChannel, OpticsConfig, SensorExposure
+from workspace.optics.optics_transformer import (
+    build_optics_input,
+    convert_scene_to_channels,
+    convert_scene_to_sensor as convert_scene_to_sensor_model,
+)
 
 
 def build_default_optics_config() -> OpticsConfig:
@@ -30,7 +35,7 @@ def build_default_optics_config() -> OpticsConfig:
     )
 
 
-def build_default_channels(scene: SpectralImage, optics_config: OpticsConfig) -> list[OpticalChannel]:
+def build_default_channels(scene: Any, optics_config: OpticsConfig) -> list[OpticalChannel]:
     """
     Формирует два промежуточных оптических канала из спектральной карты сцены.
 
@@ -69,7 +74,8 @@ def build_default_channels(scene: SpectralImage, optics_config: OpticsConfig) ->
         ),
     ]
 
-def convert_scene_to_sensor(scene: SpectralImage, optics_config: OpticsConfig) -> SensorExposure:
+
+def convert_scene_to_sensor(scene: Any, optics_config: OpticsConfig) -> SensorExposure:
     """
     Преобразует сцену в итоговую экспозицию сенсора.
 
@@ -84,9 +90,7 @@ def convert_scene_to_sensor(scene: SpectralImage, optics_config: OpticsConfig) -
     return convert_scene_to_sensor_model(scene=scene, optics_config=optics_config)
 
 
-
-
-def build_default_exposure(scene: SpectralImage, optics_config: OpticsConfig) -> SensorExposure:
+def build_default_exposure(scene: Any, optics_config: OpticsConfig) -> SensorExposure:
     """
     Формирует суммарную экспозицию на сенсоре после оптического тракта.
 
@@ -102,11 +106,23 @@ def build_default_exposure(scene: SpectralImage, optics_config: OpticsConfig) ->
     - `draft/07_full_pipeline/main.py`
     """
 
-    _ = optics_config
-    optical_data = split_optical_channels(scene.data, scene.spectral_axis)
-    return SensorExposure(
-        irradiance=optical_data["sensor_exposure"],
-        exposure_time_s=0.01,
-        spectral_axis=scene.spectral_axis,
-        description="Заглушка экспозиции на матрице после optics",
-    )
+    return convert_scene_to_sensor_model(scene=scene, optics_config=optics_config)
+
+
+def build_exposure_from_scene_source(
+    axis: Any,
+    source: Any,
+    scene_object: Any,
+    optics_config: OpticsConfig,
+) -> SensorExposure:
+    """
+    Собирает экспозицию напрямую из структур `workspace/scene_source`.
+
+    Функция ожидает duck-typed объекты с полями:
+    - `axis.wave` и `axis.bands_count`;
+    - `source.spectrum`;
+    - `scene_object.reflectance`.
+    """
+
+    optics_input = build_optics_input(axis=axis, source=source, scene_object=scene_object)
+    return convert_scene_to_sensor_model(scene=optics_input.spectra, axis=optics_input.axis, optics_config=optics_config)

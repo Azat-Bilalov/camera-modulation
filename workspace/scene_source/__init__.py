@@ -51,25 +51,25 @@ def build_optic_input(axis: SpectralAxis, source: SourceConfig, obj: ObjectConfi
 def build_axis(wave: List[float]) -> SpectralAxis:
     return SpectralAxis(wave=wave, start=wave[0], stop=wave[-1], bands_count=len(wave))
 
-if input("Использовать тестовые данные? (y/n): ").lower() == "y":
-    wave = testW
-    radiation = testR
-    coef = testC
-else:
-    wave = parse_list(input("Длины волн, нм: "))
-    radiation = parse_list(input("Мощность излучения: "))
-    coef = parse_list(input("Коэффициенты отражения объекта: "))
+# if input("Использовать тестовые данные? (y/n): ").lower() == "y":
+#     wave = testW
+#     radiation = testR
+#     coef = testC
+# else:
+#     wave = parse_list(input("Длины волн, нм: "))
+#     radiation = parse_list(input("Мощность излучения: "))
+#     coef = parse_list(input("Коэффициенты отражения объекта: "))
 
-if __name__ == "__main__":
-    spectral_axis = build_axis(wave)
-    source_config = SourceConfig(spectrum=radiation)
-    object_config = ObjectConfig(reflectance=coef)
-    optic_input = build_optic_input(spectral_axis, source_config, object_config)
+# if __name__ == "__main__":
+#     spectral_axis = build_axis(wave)
+#     source_config = SourceConfig(spectrum=radiation)
+#     object_config = ObjectConfig(reflectance=coef)
+#     optic_input = build_optic_input(spectral_axis, source_config, object_config)
 
 
-print(f"Начальная длина волны: {optic_input.spectral_axis.start} нм")
-print(f"Конечная длина волны: {optic_input.spectral_axis.stop} нм")
-print(f"Количество спектральных каналов: {optic_input.spectral_axis.bands_count}")
-print(f"Длины волн: {optic_input.spectral_axis.wave}")
-print(f"Спектральная карта сцены: {optic_input.input_signal}")
-print(f"Данные для модуля оптики: {optic_input}")
+# print(f"Начальная длина волны: {optic_input.spectral_axis.start} нм")
+# print(f"Конечная длина волны: {optic_input.spectral_axis.stop} нм")
+# print(f"Количество спектральных каналов: {optic_input.spectral_axis.bands_count}")
+# print(f"Длины волн: {optic_input.spectral_axis.wave}")
+# print(f"Спектральная карта сцены: {optic_input.input_signal}")
+# print(f"Данные для модуля оптики: {optic_input}")
