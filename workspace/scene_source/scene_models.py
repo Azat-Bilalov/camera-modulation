@@ -1,37 +1,41 @@
 """Рабочее место роли: модель сцены и источника.
 Гостев М.А."""
 
+<<<<<<< HEAD:workspace/scene_source/__init__.py
 import re
 from dataclasses import dataclass
 from pathlib import Path
+=======
+from dataclasses import dataclass
+import re
+>>>>>>> 06c681a (Соединение с main):workspace/scene_source/scene_models.py
 import math
 
+from workspace.models import (
+    SpectralAxis,
+    SpectralImage,
+    SourceConfig,
+    ObjectConfig,
+)
 
 @dataclass
-class SpectralAxis:
-    wave: List[float]
-    start: float
-    stop: float
-    bands_count: int
-
-@dataclass
-class SpectralImage:
-    spectral_axis: SpectralAxis
-    data: List[List[List[float]]] 
-
-@dataclass
-class SourceConfig:
-    spectrum: List[float]
-    position: List[float]
-
-@dataclass
-class ObjectConfig:
-    reflectance: List[float]
-    width: int
-    height: int
+class SceneSourceInput:
+    radiation: list[float]
+    source_xyz: list[float]
+    reflectance: list[float]
+    object_width: int
+    object_height: int
     point_size: float
 
-def read_spectrum_from_txt(file_path: str) -> List[float]:
+
+@dataclass
+class SceneSourceArtifacts:
+    axis: SpectralAxis
+    source: SourceConfig
+    object_config: ObjectConfig
+    scene: SpectralImage
+
+def read_spectrum_from_txt(file_path: str) -> list[float]:
     with open(file_path, "r", encoding="utf-8") as file:
         text = file.read()
 
@@ -45,7 +49,7 @@ def build_axis_by_step(start: float, step: float, count: int) -> SpectralAxis:
     wave = [start + i * step for i in range(count)]
     return SpectralAxis(wave=wave, start=wave[0], stop=wave[-1], bands_count=len(wave))
 
-def calculate_distance(point: List[float], source_position: List[float]) -> float:
+def calculate_distance(point: list[float], source_position: list[float]) -> float:
     dx = source_position[0] - point[0]
     dy = source_position[1] - point[1]
     dz = source_position[2] - point[2]
@@ -53,7 +57,7 @@ def calculate_distance(point: List[float], source_position: List[float]) -> floa
     return math.sqrt(dx ** 2 + dy ** 2 + dz ** 2)
 
 
-def calculate_cos_angle(point: List[float], source_position: List[float]) -> float:
+def calculate_cos_angle(point: list[float], source_position: list[float]) -> float:
     r = calculate_distance(point, source_position)
 
     if r == 0:
@@ -108,4 +112,41 @@ def build_optic_input(
     return SpectralImage(
         spectral_axis=axis,
         data=spectral_data
+    )
+
+def build_scene_source(input_data: SceneSourceInput) -> SceneSourceArtifacts:
+    axis = build_axis_by_step(
+        start=380.0,
+        step=10.0,
+        count=len(input_data.radiation),
+    )
+
+    source = SourceConfig(
+        spectrum=input_data.radiation,
+        position=input_data.source_xyz,
+    )
+
+    object_config = ObjectConfig(
+        reflectance=input_data.reflectance,
+        width=input_data.object_width,
+        height=input_data.object_height,
+        point_size=input_data.point_size,
+    )
+
+    scene = build_optic_input(
+        axis=axis,
+        source=source,
+        obj=object_config,
+    )
+
+    return SceneSourceArtifacts(
+        axis=axis,
+        source=source,
+        object_config=object_config,
+        scene=scene,
+    )
+
+def get_scene_source_input() -> SceneSourceInput:
+    raise NotImplementedError(
+        "Внешние данные передаются со спектрофотометра.ЗАМЕНИТЬ на реальные данные"
     )
