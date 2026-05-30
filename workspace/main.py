@@ -8,11 +8,9 @@ from workspace.optics.stubs import (
     build_default_optics_config,
 )
 from workspace.optics.optics_transformer import convert_scene_to_sensor
-from workspace.scene_source.stubs import (
-    build_default_axis,
-    build_default_object,
-    build_default_scene,
-    build_default_source,
+from workspace.scene_source.scene_models import (
+    get_scene_source_input,
+    build_scene_source
 )
 from workspace.sensor_adc.stubs import (
     build_default_adc_config,
@@ -37,10 +35,13 @@ def main() -> None:
     scene_source -> optics -> sensor_adc -> visualization.
     """
 
-    axis = build_default_axis()
-    source = build_default_source(axis)
-    object_config = build_default_object(axis)
-    scene = build_default_scene(axis, source, object_config)
+    scene_input = get_scene_source_input()
+    scene_source = build_scene_source(scene_input)
+
+    axis = scene_source.axis
+    source = scene_source.source
+    object_config = scene_source.object_config
+    scene = scene_source.scene
 
     optics_config = build_default_optics_config()
     channels = build_default_channels(scene, optics_config)
