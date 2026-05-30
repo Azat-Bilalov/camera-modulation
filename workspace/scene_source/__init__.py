@@ -1,9 +1,8 @@
 """Рабочее место роли: модель сцены и источника.
 Гостев М.А."""
 
-from dataclasses import dataclass
-from typing import List
 import re
+from dataclasses import dataclass
 from pathlib import Path
 import math
 
@@ -44,12 +43,7 @@ def read_spectrum_from_txt(file_path: str) -> List[float]:
 
 def build_axis_by_step(start: float, step: float, count: int) -> SpectralAxis:
     wave = [start + i * step for i in range(count)]
-    return SpectralAxis(
-        wave=wave,
-        start=wave[0],
-        stop=wave[-1],
-        bands_count=len(wave)
-    )
+    return SpectralAxis(wave=wave, start=wave[0], stop=wave[-1], bands_count=len(wave))
 
 def calculate_distance(point: List[float], source_position: List[float]) -> float:
     dx = source_position[0] - point[0]
@@ -77,7 +71,9 @@ def build_optic_input(
 ) -> SpectralImage:
 
     if len(source.spectrum) != axis.bands_count:
-        raise ValueError("Количество значений спектра не совпадает с количеством каналов.")
+        raise ValueError(
+            "Количество значений спектра не совпадает с количеством каналов."
+        )
 
     if len(obj.reflectance) != axis.bands_count:
         raise ValueError("Количество коэффициентов отражения не совпадает с количеством каналов.")

@@ -96,27 +96,52 @@ def export_default_preview(image: list[list[int]], export_config: ExportConfig) 
 
 def build_default_report(artifacts: PipelineArtifacts, image_path: Path) -> str:
     """
-    Собирает краткий текстовый отчет для архитектора и роли верификации.
-
-    Input:
-    - `artifacts`: собранный комплект сущностей pipeline.
-    - `image_path`: путь к сохраненному preview-файлу.
-
-    Output:
-    - строка отчета, которую можно сохранить рядом с картинкой.
-
-    Где смотреть пример:
-    - `draft/07_full_pipeline/outputs/report.txt`
+    Собирает подробный текстовый отчет для архитектора и роли верификации.
     """
-
-    return "\n".join(
-        [
-            "Workspace integration run",
-            f"Spectral bands: {artifacts.axis.band_count}",
-            f"Optical channels: {[channel.channel_id for channel in artifacts.optical_channels]}",
-            f"Sensor exposure: {summarize_matrix(artifacts.exposure.irradiance)}",
-            f"Charge: {summarize_matrix(artifacts.charge.charge)}",
-            f"Digital frame: {summarize_matrix(artifacts.frame.data)}",
-            f"Saved image: {image_path}",
-        ]
+    # Импортируем функции верификации
+    from workspace.visualization.verifier import (
+        calculate_image_statistics,
+        verify_digital_range,
+        verify_no_clipping
     )
+
+    # Получаем статистику по кадру
+    frame_stats = calculate_image_statistics(artifacts.frame.data, artifacts.frame.bit_depth)
+    range_check = verify_digital_range(artifacts.frame.data, artifacts.frame.bit_depth)
+    clip_check = verify_no_clipping(artifacts.frame.data, artifacts.frame.bit_depth)
+
+    # Формируем отчёт
+    report_lines = [
+        "=" * 60,
+        "ОТЧЁТ ПО РАБОТЕ МОДУЛЯ ВИЗУАЛИЗАЦИИ И ЭКСПОРТА",
+        "=" * 60,
+        "",
+        "--- ОСНОВНАЯ ИНФОРМАЦИЯ ---",
+        f"Спектральных диапазонов: {artifacts.axis.band_count}",
+        f"Оптические каналы: {[ch.channel_id for ch in artifacts.optical_channels]}",
+        "",
+        "--- ПАРАМЕТРЫ СЕНСОРА ---",
+        f"Экспозиция: {summarize_matrix(artifacts.exposure.irradiance)}",
+        f"Заряд: {summarize_matrix(artifacts.charge.charge)}",
+        "",
+        "--- ЦИФРОВОЙ КАДР ---",
+        f"Размер: {frame_stats['height']}x{frame_stats['width']}",
+        f"Битность: {frame_stats['bit_depth']} бит",
+        f"Диапазон значений: {frame_stats['dynamic_range']}",
+        f"Среднее значение: {frame_stats['mean']}",
+        "",
+        "--- ВЕРИФИКАЦИЯ ---",
+        f"Диапазон корректен: {range_check['is_valid']}",
+        f"Клиппинг (макс): {clip_check['clipped_high']} пикс. ({clip_check['clipped_high_percent']}%)",
+        f"Клиппинг (мин): {clip_check['clipped_low']} пикс. ({clip_check['clipped_low_percent']}%)",
+        f"Клиппинг допустим: {clip_check['is_acceptable']}",
+        "",
+        "--- СОХРАНЁННЫЙ ФАЙЛ ---",
+        f"Путь: {image_path}",
+        "",
+        "=" * 60,
+        "ОТЧЁТ СГЕНЕРИРОВАН АВТОМАТИЧЕСКИ",
+        "=" * 60,
+    ]
+
+    return "\n".join(report_lines)

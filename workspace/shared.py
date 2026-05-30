@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from pathlib import Path
 import math
 import struct
+from pathlib import Path
 
 from workspace.models import SpectralAxis
 
 
-def create_default_axis(start_nm: int = 400, stop_nm: int = 700, step_nm: int = 20) -> SpectralAxis:
+def create_default_axis(
+    start_nm: int = 400, stop_nm: int = 700, step_nm: int = 20
+) -> SpectralAxis:
     """
     Создает стандартную спектральную сетку для всех role-stub модулей.
 
@@ -64,7 +66,9 @@ def gaussian_spectrum(
     return normalize_vector(spectrum)
 
 
-def build_default_reflectance_map(height: int, width: int, axis: SpectralAxis) -> list[list[list[float]]]:
+def build_default_reflectance_map(
+    height: int, width: int, axis: SpectralAxis
+) -> list[list[list[float]]]:
     """
     Создает детерминированную тестовую карту отражения объекта.
 
@@ -214,7 +218,9 @@ def integrate_sensor_charge(
     return charge
 
 
-def quantize_frame(charge_map: list[list[float]], bit_depth: int, full_scale: float) -> list[list[int]]:
+def quantize_frame(
+    charge_map: list[list[float]], bit_depth: int, full_scale: float
+) -> list[list[int]]:
     """
     Квантование аналогового сигнала в целочисленный цифровой кадр.
 

@@ -5,9 +5,9 @@ from pathlib import Path
 from workspace.models import PipelineArtifacts
 from workspace.optics.stubs import (
     build_default_channels,
-    build_default_exposure,
     build_default_optics_config,
 )
+from workspace.optics.optics_transformer import convert_scene_to_sensor
 from workspace.scene_source.stubs import (
     build_default_axis,
     build_default_object,
@@ -20,7 +20,7 @@ from workspace.sensor_adc.stubs import (
     build_default_frame,
     build_default_sensor_config,
 )
-from workspace.visualization.stubs import (
+from workspace.visualization.visualization import (
     build_default_export_config,
     build_default_preview,
     build_default_reconstruction_config,
@@ -44,7 +44,7 @@ def main() -> None:
 
     optics_config = build_default_optics_config()
     channels = build_default_channels(scene, optics_config)
-    exposure = build_default_exposure(scene, optics_config)
+    exposure = convert_scene_to_sensor(scene, optics_config, axis)
 
     sensor_config = build_default_sensor_config(exposure)
     charge = build_default_charge(exposure, sensor_config)

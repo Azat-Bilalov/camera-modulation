@@ -1,6 +1,4 @@
-def main():
-    print("Hello from camera-modulation!")
-
+from workspace.main import main
 
 if __name__ == "__main__":
     main()
