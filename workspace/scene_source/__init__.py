@@ -9,7 +9,7 @@ import math
 
 @dataclass
 class SpectralAxis:
-    wave: List[float]
+    wave: list[float]
     start: float
     stop: float
     bands_count: int
@@ -17,21 +17,21 @@ class SpectralAxis:
 @dataclass
 class SpectralImage:
     spectral_axis: SpectralAxis
-    data: List[List[List[float]]] 
+    data: list[list[list[float]]] 
 
 @dataclass
 class SourceConfig:
-    spectrum: List[float]
-    position: List[float]
+    spectrum: list[float]
+    position: list[float]
 
 @dataclass
 class ObjectConfig:
-    reflectance: List[float]
+    reflectance: list[float]
     width: int
     height: int
     point_size: float
 
-def read_spectrum_from_txt(file_path: str) -> List[float]:
+def read_spectrum_from_txt(file_path: str) -> list[float]:
     with open(file_path, "r", encoding="utf-8") as file:
         text = file.read()
 
@@ -45,7 +45,7 @@ def build_axis_by_step(start: float, step: float, count: int) -> SpectralAxis:
     wave = [start + i * step for i in range(count)]
     return SpectralAxis(wave=wave, start=wave[0], stop=wave[-1], bands_count=len(wave))
 
-def calculate_distance(point: List[float], source_position: List[float]) -> float:
+def calculate_distance(point: list[float], source_position: list[float]) -> float:
     dx = source_position[0] - point[0]
     dy = source_position[1] - point[1]
     dz = source_position[2] - point[2]
@@ -53,7 +53,7 @@ def calculate_distance(point: List[float], source_position: List[float]) -> floa
     return math.sqrt(dx ** 2 + dy ** 2 + dz ** 2)
 
 
-def calculate_cos_angle(point: List[float], source_position: List[float]) -> float:
+def calculate_cos_angle(point: list[float], source_position: list[float]) -> float:
     r = calculate_distance(point, source_position)
 
     if r == 0:

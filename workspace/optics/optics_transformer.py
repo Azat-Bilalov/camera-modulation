@@ -1,4 +1,42 @@
-from workspace.models import SpectralAxis, OpticsConfig, SpectralImage, SensorExposure
+from workspace.scene_source import SpectralAxis, SpectralImage, SensorExposure
+
+def convert_scene_to_exposure(
+    image: SpectralImage
+) -> list[list[dict[str, list[float]]]]:
+    blue_border = 490
+    green_border = 570
+    red_border = 730
+    blue_interval_steps = ((blue_border - image.spectral_axis.start) / 10) + 1
+    green_interval_steps = ((green_border - blue_border) / 10) + 1
+    red_interval_steps = ((min(red_border, image.spectral_axis.stop) - green_border) / 10) + 1
+
+    blue_list = list()
+    green_list = list()
+    red_list = list()
+
+    result = list()
+
+    for i in range(len(image.data)):
+        column = list()
+        for j in range(len(image.data[i])):
+            row = list()
+            for k in range(len(image.data[i][j])):
+                if k < blue_interval_steps:
+                    blue_list.append(image.data[i][j][k])
+                elif blue_interval_steps <= k < green_interval_steps:
+                    green_list.append(image.data[i][j][k])
+                else:
+                    red_list.append(image.data[i][j][k])
+            row.append({"blue": blue_list, "green": green_list, "red": red_list})
+        column.append(row)
+    
+    result
+            
+    
+    return list(list(dict()))
+
+
+    
 
 def convert_scene_to_channels(
     scene: SpectralImage | list[list[list[float]]],
