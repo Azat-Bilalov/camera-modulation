@@ -1,14 +1,8 @@
 """Рабочее место роли: модель сцены и источника.
 Гостев М.А."""
 
-<<<<<<< HEAD:workspace/scene_source/__init__.py
-import re
-from dataclasses import dataclass
-from pathlib import Path
-=======
 from dataclasses import dataclass
 import re
->>>>>>> 06c681a (Соединение с main):workspace/scene_source/scene_models.py
 import math
 
 from workspace.models import (

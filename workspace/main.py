@@ -7,18 +7,10 @@ from workspace.optics.stubs import (
     build_default_channels,
     build_default_optics_config,
 )
-<<<<<<< HEAD
 from workspace.optics.optics_transformer import convert_scene_to_sensor
-from workspace.scene_source.stubs import (
-    build_default_axis,
-    build_default_object,
-    build_default_scene,
-    build_default_source,
-=======
 from workspace.scene_source.scene_models import (
     get_scene_source_input,
-    build_scene_source,
->>>>>>> 06c681a (Соединение с main)
+    build_scene_source
 )
 from workspace.sensor_adc.stubs import (
     build_default_adc_config,
