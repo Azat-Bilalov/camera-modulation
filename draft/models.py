@@ -135,29 +135,6 @@ class OpticsConfig:
 
 
 @dataclass
-class SensorExposure:
-    """
-    Энергия на поверхности сенсора перед накоплением заряда.
-
-    В простом случае `irradiance` можно хранить как двумерную карту.
-    В более строгой версии сюда можно добавить трехмерный спектральный слой.
-    """
-
-    irradiance: list[list[float]]
-    exposure_time_s: float
-    spectral_axis: SpectralAxis
-    description: str = "Распределение энергии на матрице до электроники"
-
-    @property
-    def height(self) -> int:
-        return len(self.irradiance)
-
-    @property
-    def width(self) -> int:
-        return len(self.irradiance[0]) if self.irradiance else 0
-
-
-@dataclass
 class SensorConfig:
     """
     Параметры фотоматрицы.

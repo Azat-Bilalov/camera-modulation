@@ -5,7 +5,6 @@
 Архитектор использует этот файл как единый импортный вход для всех участников.
 """
 from dataclasses import dataclass
-from typing import list
 
 from draft.models import (  # noqa: F401
     AdcConfig,
@@ -13,11 +12,9 @@ from draft.models import (  # noqa: F401
     DigitalFrame,
     ExportConfig,
     OpticalChannel,
-    OpticsConfig,
     PipelineArtifacts,
     ReconstructionConfig,
     SensorConfig,
-    SensorExposure,
 )
 
 @dataclass
@@ -46,6 +43,23 @@ class ObjectConfig:
     width: int
     height: int
     point_size: float
+
+@dataclass
+class OpticsConfig:
+    channel_count: int
+    split_strategy: str
+    mask_pattern: str
+    transmission: list[float]  # [R, G, B] — вместо transmission_low/high
+    recombination_mode: str = "sum"
+    rgb_ranges_nm: list[tuple[float, float]] = None  # [(400,500), (500,600), (600,700)]
+    description: str = "..."
+
+@dataclass
+class SensorExposure:
+    spectral_axis: SpectralAxis
+    channel_irradiance: list[list[list[float]]] | None = None  # (H, W, 3) — новое поле
+    description: str = "Распределение энергии на матрице до электроники"
+    exposure_time_s: float = 0.01
 
 __all__ = [
     "AdcConfig",

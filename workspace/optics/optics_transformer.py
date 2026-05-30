@@ -1,146 +1,92 @@
-from workspace.scene_source import SpectralAxis, SpectralImage, SensorExposure
+from workspace.models import SpectralImage, OpticsConfig,SpectralAxis, SensorExposure
+
+
+
+def build_default_optics_config() -> OpticsConfig:
+    return OpticsConfig(
+        channel_count=3,
+        split_strategy="rgb spectral split",
+        mask_pattern="checkerboard amplitude mask",
+        transmission=[0.95, 0.90, 0.85],  # R, G, B — синий обычно пропускается хуже
+        recombination_mode="multi-channel",
+        rgb_ranges_nm=[(400, 500), (500, 600), (600, 700)],
+        description="RGB конфигурация оптики",
+    )
 
 def convert_scene_to_exposure(
-    image: SpectralImage
-) -> list[list[dict[str, list[float]]]]:
-    blue_border = 490
-    green_border = 570
-    red_border = 730
-    blue_interval_steps = ((blue_border - image.spectral_axis.start) / 10) + 1
-    green_interval_steps = ((green_border - blue_border) / 10) + 1
-    red_interval_steps = ((min(red_border, image.spectral_axis.stop) - green_border) / 10) + 1
-
-    blue_list = list()
-    green_list = list()
-    red_list = list()
-
-    result = list()
-
-    for i in range(len(image.data)):
-        column = list()
-        for j in range(len(image.data[i])):
-            row = list()
-            for k in range(len(image.data[i][j])):
-                if k < blue_interval_steps:
-                    blue_list.append(image.data[i][j][k])
-                elif blue_interval_steps <= k < green_interval_steps:
-                    green_list.append(image.data[i][j][k])
-                else:
-                    red_list.append(image.data[i][j][k])
-            row.append({"blue": blue_list, "green": green_list, "red": red_list})
-        column.append(row)
+    scene: SpectralImage,
+    config: OpticsConfig,
+) -> SensorExposure:
+    optical_data = convert_scene_to_channels_rgb(scene, config, scene.spectral_axis)
+    return SensorExposure(
+        channel_irradiance=optical_data,
+        spectral_axis=scene.spectral_axis
+    )
     
-    result
-            
-    
-    return list(list(dict()))
+def build_default_optics_config() -> OpticsConfig:
+    return OpticsConfig(
+        channel_count=3,
+        split_strategy="rgb spectral split",
+        mask_pattern="checkerboard amplitude mask",
+        transmission=[0.95, 0.90, 0.85],  # R, G, B — синий обычно пропускается хуже
+        recombination_mode="multi-channel",
+        rgb_ranges_nm=[(400, 500), (500, 600), (600, 700)],
+        description="RGB конфигурация оптики",
+    )
 
-
-    
-
-def convert_scene_to_channels(
+def convert_scene_to_channels_rgb(
     scene: SpectralImage | list[list[list[float]]],
     optics_config: OpticsConfig,
     axis: SpectralAxis | None = None,
-) -> dict[str, list[list[float]]]:
+) -> list[list[list[float]]]:
     """
-    Преобразует спектральную карту сцены в оптические каналы и карту экспозиции.
-
-    Input:
-    - `scene`: `SpectralImage` или спектральная карта `(H, W, bands)`.
-    - `optics_config`: параметры оптического разделения и передачи.
-    - `axis`: опциональная ось, нужна только если `scene` передан как матрица.
-
-    Output:
-    - словарь с ключами `channel_low`, `channel_high`, `sensor_exposure`.
-
-    Примечание:
-    - В текущей версии используются те же детерминированные маски, что и
-      в `split_optical_channels`, но коэффициенты передачи теперь берутся
-      напрямую из `OpticsConfig`.
+    RGB-версия: разделяет спектр на 3 канала по длинам волн.
     """
-
     if isinstance(scene, SpectralImage):
         scene_data = scene.data
         spectral_axis = scene.spectral_axis
     else:
         if axis is None:
-            raise ValueError("Параметр axis обязателен, когда scene передан как матрица.")
+            raise ValueError("Параметр axis обязателен.")
         scene_data = scene
         spectral_axis = axis
 
-    split_index = spectral_axis.band_count // 2
+    wavelengths = spectral_axis.wave
+    
+    # Определяем, какие индексы спектра попадают в R, G, B
+    r_indices = [i for i, w in enumerate(wavelengths) if 600 <= w <= 730]
+    g_indices = [i for i, w in enumerate(wavelengths) if 500 <= w < 600]
+    b_indices = [i for i, w in enumerate(wavelengths) if 380 <= w < 500]
+    
     height = len(scene_data)
     width = len(scene_data[0])
 
-    low_band: list[list[float]] = []
-    high_band: list[list[float]] = []
-    sensor_exposure: list[list[float]] = []
+    r_band: list[list[float]] = []
+    g_band: list[list[float]] = []
+    b_band: list[list[float]] = []
+    sensor_exposure: list[list[list[float]]] = []  # (H, W, 3)
 
     for y in range(height):
-        low_row: list[float] = []
-        high_row: list[float] = []
-        exposure_row: list[float] = []
+        r_row: list[float] = []
+        g_row: list[float] = []
+        b_row: list[float] = []
+        exposure_row: list[list[float]] = []
         for x in range(width):
             spectrum = scene_data[y][x]
-            mask_factor = 1.0 if (x + y) % 2 == 0 else 0.72
 
-            low_value = sum(spectrum[:split_index]) * optics_config.transmission_low * mask_factor
-            high_value = (
-                sum(spectrum[split_index:])
-                * optics_config.transmission_high
-                * (2.0 - mask_factor)
-            )
+            # Суммируем энергию в каждой спектральной полосе
+            r_value = sum(spectrum[i] for i in r_indices) * optics_config.transmission[0]
+            g_value = sum(spectrum[i] for i in g_indices) * optics_config.transmission[1]
+            b_value = sum(spectrum[i] for i in b_indices) * optics_config.transmission[2]
 
-            low_row.append(low_value)
-            high_row.append(high_value)
-            exposure_row.append(low_value + high_value)
+            r_row.append(r_value)
+            g_row.append(g_value)
+            b_row.append(b_value)
+            exposure_row.append([r_value, g_value, b_value])
 
-        low_band.append(low_row)
-        high_band.append(high_row)
+        r_band.append(r_row)
+        g_band.append(g_row)
+        b_band.append(b_row)
         sensor_exposure.append(exposure_row)
 
-    return {
-        "channel_low": low_band,
-        "channel_high": high_band,
-        "sensor_exposure": sensor_exposure,
-    }
-
-
-def convert_scene_to_sensor(
-    scene: SpectralImage | list[list[list[float]]],
-    optics_config: OpticsConfig,
-    axis: SpectralAxis | None = None,
-    exposure_time_s: float = 0.01,
-) -> SensorExposure:
-    """
-    Преобразует сцену в итоговый объект `SensorExposure`.
-
-    Input:
-    - `scene`: `SpectralImage` или спектральная карта `(H, W, bands)`.
-    - `optics_config`: параметры оптического разделения и передачи.
-    - `axis`: опциональная ось, нужна только если `scene` передан как матрица.
-    - `exposure_time_s`: время экспозиции в секундах.
-
-    Output:
-    - `SensorExposure` для модуля `sensor_adc`.
-    """
-
-    if isinstance(scene, SpectralImage):
-        spectral_axis = scene.spectral_axis
-    else:
-        if axis is None:
-            raise ValueError("Параметр axis обязателен, когда scene передан как матрица.")
-        spectral_axis = axis
-
-    optical_data = convert_scene_to_channels(
-        scene=scene,
-        axis=axis,
-        optics_config=optics_config,
-    )
-    return SensorExposure(
-        irradiance=optical_data["sensor_exposure"],
-        exposure_time_s=exposure_time_s,
-        spectral_axis=spectral_axis,
-        description="Экспозиция на матрице после преобразования сцены в sensor plane",
-    )
+    return sensor_exposure  # теперь 3D: H×W×3
