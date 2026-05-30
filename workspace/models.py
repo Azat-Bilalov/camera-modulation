@@ -12,16 +12,12 @@ from draft.models import (  # noqa: F401
     ChargeMatrix,
     DigitalFrame,
     ExportConfig,
-    ObjectConfig,
     OpticalChannel,
     OpticsConfig,
     PipelineArtifacts,
     ReconstructionConfig,
     SensorConfig,
     SensorExposure,
-    SourceConfig,
-    SpectralAxis,
-    SpectralImage,
 )
 
 @dataclass
