@@ -3,11 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from workspace.models import PipelineArtifacts
-from workspace.optics.stubs import (
-    build_default_channels,
-    build_default_optics_config,
+from workspace.optics.optics_transformer import (
+    convert_scene_to_exposure,
+    build_default_optics_config
 )
-from workspace.optics.optics_transformer import convert_scene_to_sensor
 from workspace.scene_source.scene_models import (
     get_scene_source_input,
     build_scene_source
@@ -44,8 +43,9 @@ def main() -> None:
     scene = scene_source.scene
 
     optics_config = build_default_optics_config()
-    channels = build_default_channels(scene, optics_config)
-    exposure = convert_scene_to_sensor(scene, optics_config, axis)
+    #channels = build_default_channels(scene, optics_config)
+    #exposure = convert_scene_to_sensor(scene, optics_config, axis)
+    exposure = convert_scene_to_exposure(scene, optics_config)
 
     sensor_config = build_default_sensor_config(exposure)
     charge = build_default_charge(exposure, sensor_config)

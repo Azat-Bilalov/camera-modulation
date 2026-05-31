@@ -141,6 +141,12 @@ def build_scene_source(input_data: SceneSourceInput) -> SceneSourceArtifacts:
     )
 
 def get_scene_source_input() -> SceneSourceInput:
-    raise NotImplementedError(
-        "Внешние данные передаются со спектрофотометра.ЗАМЕНИТЬ на реальные данные"
+    l = [7.19772, 8.66835, 10.0241, 10.6711, 10.9908, 11.318, 11.713, 12.13, 12.5267, 12.8175, 13.015, 13.1402, 13.2771, 13.4178, 13.5352, 13.54, 13.4372, 13.1751, 12.6869, 12.1096, 11.3222, 10.3386, 9.22227, 8.32678, 7.86045, 7.65831, 7.57516, 7.56342, 7.72733, 8.0386, 8.40108, 8.71172, 8.92745, 9.01649, 9.01843, 9.165]
+    return SceneSourceInput(
+        radiation=[1] * len(l),
+        source_xyz=[10.0, 10.0, 50.0],
+        reflectance=l,
+        object_height=5,
+        object_width=5,
+        point_size=10
     )
