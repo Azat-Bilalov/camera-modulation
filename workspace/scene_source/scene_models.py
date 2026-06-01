@@ -146,7 +146,7 @@ def get_scene_source_input() -> SceneSourceInput:
         radiation=[1] * len(l),
         source_xyz=[10.0, 10.0, 50.0],
         reflectance=l,
-        object_height=5,
-        object_width=5,
+        object_height=32,
+        object_width=32,
         point_size=10
     )

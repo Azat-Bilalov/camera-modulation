@@ -310,6 +310,112 @@ def save_grayscale_bmp(image: list[list[int]], path: Path) -> None:
         file.write(pixel_bytes)
 
 
+def demosaic_superpixel(raw: list[list[int]]) -> list[list[list[int]]]:
+    """
+    Простейший демозаик 2x2 (superpixel) для шаблона Байера:
+
+        | G | R |
+        | B | G |
+
+    Каждый блок 2x2 сворачивается в один RGB-пиксель: R и B берутся напрямую,
+    G усредняется по двум зелёным. Разрешение уменьшается вдвое по каждой оси,
+    зато нет краевых артефактов интерполяции — это честное «что реально
+    разрешает» байеровский сенсор.
+
+    Input:
+    - `raw`: двумерный raw mosaic-кадр (`DigitalFrame.data`).
+
+    Output:
+    - трёхмерный список формы `(H//2, W//2, 3)` со значениями R, G, B.
+    """
+
+    height = len(raw) - (len(raw) % 2)
+    width = (len(raw[0]) - (len(raw[0]) % 2)) if raw else 0
+
+    rgb: list[list[list[int]]] = []
+    for y in range(0, height, 2):
+        rgb_row: list[list[int]] = []
+        for x in range(0, width, 2):
+            green_top = raw[y][x]          # G
+            red = raw[y][x + 1]            # R
+            blue = raw[y + 1][x]           # B
+            green_bottom = raw[y + 1][x + 1]  # G
+            rgb_row.append([red, (green_top + green_bottom) // 2, blue])
+        rgb.append(rgb_row)
+    return rgb
+
+
+def normalize_rgb_to_u8(image: list[list[list[int]]]) -> list[list[list[int]]]:
+    """
+    Нормализует RGB-кадр в диапазон 0..255 единым масштабом по всем каналам,
+    чтобы не разрушить цветовой баланс.
+    """
+
+    flat = [value for row in image for pixel in row for value in pixel]
+    minimum = min(flat)
+    maximum = max(flat)
+    if maximum == minimum:
+        return [[[0, 0, 0] for _ in row] for row in image]
+
+    result: list[list[list[int]]] = []
+    for row in image:
+        result_row: list[list[int]] = []
+        for pixel in row:
+            scaled = [
+                max(0, min(255, int(round((value - minimum) * 255.0 / (maximum - minimum)))))
+                for value in pixel
+            ]
+            result_row.append(scaled)
+        result.append(result_row)
+    return result
+
+
+def save_rgb_bmp(image: list[list[list[int]]], path: Path) -> None:
+    """Сохраняет RGB-кадр `(H, W, 3)` со значениями 0..255 в 24-битный `bmp`."""
+
+    height = len(image)
+    width = len(image[0])
+    row_padding = (4 - (width * 3) % 4) % 4
+    pixel_bytes = bytearray()
+
+    for row in reversed(image):
+        for pixel in row:
+            red, green, blue = pixel
+            # BMP хранит пиксели в порядке B, G, R.
+            pixel_bytes.extend(
+                (
+                    max(0, min(255, blue)),
+                    max(0, min(255, green)),
+                    max(0, min(255, red)),
+                )
+            )
+        pixel_bytes.extend(b"\x00" * row_padding)
+
+    file_header_size = 14
+    dib_header_size = 40
+    pixel_data_offset = file_header_size + dib_header_size
+    file_size = pixel_data_offset + len(pixel_bytes)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("wb") as file:
+        file.write(b"BM")
+        file.write(struct.pack("<I", file_size))
+        file.write(struct.pack("<HH", 0, 0))
+        file.write(struct.pack("<I", pixel_data_offset))
+        file.write(struct.pack("<I", dib_header_size))
+        file.write(struct.pack("<i", width))
+        file.write(struct.pack("<i", height))
+        file.write(struct.pack("<H", 1))
+        file.write(struct.pack("<H", 24))
+        file.write(struct.pack("<I", 0))
+        file.write(struct.pack("<I", len(pixel_bytes)))
+        file.write(struct.pack("<i", 2835))
+        file.write(struct.pack("<i", 2835))
+        file.write(struct.pack("<I", 0))
+        file.write(struct.pack("<I", 0))
+        file.write(pixel_bytes)
+
+
 def summarize_matrix(matrix: list[list[float | int]]) -> str:
     """Возвращает короткую строку со статистикой по двумерной матрице."""
 

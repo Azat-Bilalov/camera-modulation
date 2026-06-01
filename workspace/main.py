@@ -24,6 +24,12 @@ from workspace.visualization.visualization import (
     build_default_report,
     export_default_preview,
 )
+from workspace.shared import (
+    demosaic_superpixel,
+    normalize_rgb_to_u8,
+    save_rgb_bmp,
+    summarize_matrix,
+)
 
 
 def main() -> None:
@@ -47,34 +53,24 @@ def main() -> None:
     #exposure = convert_scene_to_sensor(scene, optics_config, axis)
     exposure = convert_scene_to_exposure(scene, optics_config)
 
+    # sensor_adc: (H,W,3) -> CFA (raw mosaic) -> заряд -> АЦП -> цифровой кадр.
     sensor_config = build_default_sensor_config(exposure)
     charge = build_default_charge(exposure, sensor_config)
     adc_config = build_default_adc_config()
     frame = build_default_frame(charge, adc_config)
 
-    reconstruction_config = build_default_reconstruction_config()
+    # visualization: демозаик raw-кадра обратно в RGB и экспорт картинки.
     export_config = build_default_export_config()
-    image = build_default_preview(frame, reconstruction_config)
-    image_path = export_default_preview(image, export_config)
+    rgb = demosaic_superpixel(frame.data)
+    image = normalize_rgb_to_u8(rgb)
 
-    artifacts = PipelineArtifacts(
-        axis=axis,
-        source=source,
-        scene=scene,
-        exposure=exposure,
-        charge=charge,
-        frame=frame,
-        export=export_config,
-        optical_channels=channels,
-        description="Интеграционный комплект из role-stub модулей workspace",
-    )
+    output_dir = Path(export_config.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    image_path = output_dir / f"final_image.{export_config.image_format}"
+    save_rgb_bmp(image, image_path)
 
-    report = build_default_report(artifacts, image_path)
-    report_path = Path(export_config.output_dir) / export_config.report_name
-    report_path.write_text(report, encoding="utf-8")
-
-    print(report)
-    print(f"Saved report: {report_path}")
+    print(f"Raw mosaic (frame): {summarize_matrix(frame.data)}")
+    print(f"Saved image: {image_path}")
 
 
 if __name__ == "__main__":
