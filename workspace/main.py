@@ -34,9 +34,7 @@ from workspace.visualization.visualization import (
 )
 
 
-def _save_upscaled_png(
-    rgb_image: list[list[list[int]]], path: Path, scale: int = 8
-) -> None:
+def _save_upscaled_png(rgb_image: list[list[list[int]]], path: Path, scale: int = 8) -> None:
     """Сохраняет RGB-изображение в PNG с nearest-neighbor upscaling."""
     height = len(rgb_image)
     width = len(rgb_image[0])
@@ -56,9 +54,7 @@ def main() -> None:
         python -m workspace.main
         python -m workspace.main --spectrum workspace/input/scarlet_spectrum.csv
     """
-    parser = argparse.ArgumentParser(
-        description="Спектральный симулятор формирования изображения."
-    )
+    parser = argparse.ArgumentParser(description="Спектральный симулятор формирования изображения.")
     parser.add_argument(
         "--spectrum",
         type=Path,

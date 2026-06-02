@@ -60,9 +60,7 @@ def build_rgb_frame(
 
     channel_frames: list[list[list[int]]] = []
     for c in range(3):
-        channel_2d = [
-            [channel_irradiance[y][x][c] for x in range(width)] for y in range(height)
-        ]
+        channel_2d = [[channel_irradiance[y][x][c] for x in range(width)] for y in range(height)]
         charge_map = integrate_sensor_charge(
             channel_2d,
             gain=sensor_config.gain,

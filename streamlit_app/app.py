@@ -89,9 +89,7 @@ with st.sidebar:
         point_size = st.slider("Размер точки (pixel_pitch)", 1.0, 50.0, 10.0, 1.0)
 
         st.markdown("** Отражение (reflectance)**")
-        reflectance_file = st.file_uploader(
-            "CSV со спектром (колонка `value`)", type=["csv"]
-        )
+        reflectance_file = st.file_uploader("CSV со спектром (колонка `value`)", type=["csv"])
         if reflectance_file is None:
             default_csv = Path(__file__).parent / "sample_spectrum.csv"
             reflectance_values = read_spectrum_from_csv(str(default_csv))
@@ -375,13 +373,7 @@ if run:
             image = normalize_rgb_to_u8(rgb_int)
         else:
             max_code = (1 << adc_config.bit_depth) - 1
-            image = [
-                [
-                    [max(0, min(255, int(v * 255 / max_code))) for v in pixel]
-                    for pixel in row
-                ]
-                for row in rgb_int
-            ]
+            image = [[[max(0, min(255, int(v * 255 / max_code))) for v in pixel] for pixel in row] for row in rgb_int]
         image_np = np.array(image, dtype=np.uint8)
 
     st.success("Симуляция завершена!")
@@ -438,12 +430,8 @@ if run:
     with col_right:
         st.subheader(" Статистика")
 
-        frame_stats = calculate_image_statistics(
-            artifacts.frame.data, artifacts.frame.bit_depth
-        )
-        range_check = verify_digital_range(
-            artifacts.frame.data, artifacts.frame.bit_depth
-        )
+        frame_stats = calculate_image_statistics(artifacts.frame.data, artifacts.frame.bit_depth)
+        range_check = verify_digital_range(artifacts.frame.data, artifacts.frame.bit_depth)
         clip_check = verify_no_clipping(artifacts.frame.data, artifacts.frame.bit_depth)
 
         st.metric("Разрешение", f"{frame_stats['height']}×{frame_stats['width']}")
@@ -516,7 +504,8 @@ if run:
             f"Bit depth: {adc_config.bit_depth}",
             "",
             "--- ПРОМЕЖУТОЧНЫЕ ДАННЫЕ ---",
-            f"Экспозиция: {len(artifacts.exposure.channel_irradiance or [])}x{len((artifacts.exposure.channel_irradiance or [[]])[0])}x3",
+            f"Экспозиция: {len(artifacts.exposure.channel_irradiance or [])}x"
+            f"{len((artifacts.exposure.channel_irradiance or [[]])[0])}x3",
             f"Заряд: {summarize_matrix(artifacts.charge.charge)}",
             "",
             "--- ЦИФРОВОЙ КАДР ---",

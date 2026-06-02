@@ -23,9 +23,7 @@ def integrate_sensor_charge(
     return charge
 
 
-def quantize_frame(
-    charge_map: list[list[float]], bit_depth: int, full_scale: float
-) -> list[list[int]]:
+def quantize_frame(charge_map: list[list[float]], bit_depth: int, full_scale: float) -> list[list[int]]:
     """Квантование аналогового сигнала в целочисленный цифровой кадр."""
 
     max_code = (1 << bit_depth) - 1
@@ -97,9 +95,7 @@ def save_grayscale_bmp(image: list[list[int]], path: Path) -> None:
         file.write(pixel_bytes)
 
 
-def normalize_rgb_to_u8(
-    image: list[list[list[int]]], gamma: float = 0.4
-) -> list[list[list[int]]]:
+def normalize_rgb_to_u8(image: list[list[list[int]]], gamma: float = 0.4) -> list[list[list[int]]]:
     """
     Нормализует RGB-кадр в диапазон 0..255 единым масштабом по всем каналам,
     чтобы не разрушить цветовой баланс, с опциональной гамма-коррекцией.
@@ -121,9 +117,7 @@ def normalize_rgb_to_u8(
             # Масштабирование относительно глобального максимума
             normed = [value / maximum for value in pixel]
             # Гамма-коррекция (одинаковая для всех каналов — сохраняет оттенок)
-            corrected = [
-                max(0, min(255, int(round((v**gamma) * 255.0)))) for v in normed
-            ]
+            corrected = [max(0, min(255, int(round((v**gamma) * 255.0)))) for v in normed]
             result_row.append(corrected)
         result.append(result_row)
     return result

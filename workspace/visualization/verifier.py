@@ -5,9 +5,7 @@
 from typing import Any, Dict, List
 
 
-def verify_digital_range(
-    frame_data: List[List[int]], expected_bit_depth: int = 10
-) -> Dict[str, Any]:
+def verify_digital_range(frame_data: List[List[int]], expected_bit_depth: int = 10) -> Dict[str, Any]:
     """
     Проверяет, что значения пикселей находятся в допустимом диапазоне.
     """
@@ -22,9 +20,7 @@ def verify_digital_range(
     if actual_min < min_valid:
         errors.append(f"Минимальное значение {actual_min} ниже допустимого {min_valid}")
     if actual_max > max_valid:
-        errors.append(
-            f"Максимальное значение {actual_max} выше допустимого {max_valid}"
-        )
+        errors.append(f"Максимальное значение {actual_max} выше допустимого {max_valid}")
 
     return {
         "bit_depth": expected_bit_depth,
@@ -53,9 +49,7 @@ def verify_no_clipping(
     high_percent = 100.0 * clipped_high / total_pixels
     low_percent = 100.0 * clipped_low / total_pixels
 
-    is_acceptable = (
-        high_percent <= threshold_percent and low_percent <= threshold_percent
-    )
+    is_acceptable = high_percent <= threshold_percent and low_percent <= threshold_percent
 
     return {
         "total_pixels": total_pixels,
@@ -64,15 +58,11 @@ def verify_no_clipping(
         "clipped_low": clipped_low,
         "clipped_low_percent": round(low_percent, 2),
         "is_acceptable": is_acceptable,
-        "warning": "Значительный клиппинг!"
-        if not is_acceptable
-        else "Клиппинг в допустимых пределах",
+        "warning": "Значительный клиппинг!" if not is_acceptable else "Клиппинг в допустимых пределах",
     }
 
 
-def calculate_image_statistics(
-    frame_data: List[List[int]], bit_depth: int = 10
-) -> Dict[str, Any]:
+def calculate_image_statistics(frame_data: List[List[int]], bit_depth: int = 10) -> Dict[str, Any]:
     """
     Рассчитывает статистику по изображению.
     """

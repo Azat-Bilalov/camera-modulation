@@ -31,9 +31,7 @@ def build_default_report(artifacts: PipelineArtifacts, image_path: Path) -> str:
         verify_no_clipping,
     )
 
-    frame_stats = calculate_image_statistics(
-        artifacts.frame.data, artifacts.frame.bit_depth
-    )
+    frame_stats = calculate_image_statistics(artifacts.frame.data, artifacts.frame.bit_depth)
     range_check = verify_digital_range(artifacts.frame.data, artifacts.frame.bit_depth)
     clip_check = verify_no_clipping(artifacts.frame.data, artifacts.frame.bit_depth)
 

@@ -82,19 +82,13 @@ def calculate_cos_angle(point: list[float], source_position: list[float]) -> flo
     return max(cos_angle, 0.0)
 
 
-def build_optic_input(
-    axis: SpectralAxis, source: SourceConfig, obj: ObjectConfig
-) -> SpectralImage:
+def build_optic_input(axis: SpectralAxis, source: SourceConfig, obj: ObjectConfig) -> SpectralImage:
 
     if len(source.spectrum) != axis.bands_count:
-        raise ValueError(
-            "Количество значений спектра не совпадает с количеством каналов."
-        )
+        raise ValueError("Количество значений спектра не совпадает с количеством каналов.")
 
     if len(obj.reflectance) != axis.bands_count:
-        raise ValueError(
-            "Количество коэффициентов отражения не совпадает с количеством каналов."
-        )
+        raise ValueError("Количество коэффициентов отражения не совпадает с количеством каналов.")
 
     spectral_data = []
 
@@ -108,8 +102,7 @@ def build_optic_input(
             cos_angle = calculate_cos_angle(point_position, source.position)
 
             point_spectrum = [
-                source.spectrum[band] * cos_angle / (r**2) * obj.reflectance[band]
-                for band in range(axis.bands_count)
+                source.spectrum[band] * cos_angle / (r**2) * obj.reflectance[band] for band in range(axis.bands_count)
             ]
 
             row.append(point_spectrum)
@@ -164,9 +157,7 @@ def get_scene_source_input(csv_path: str | None = None) -> SceneSourceInput:
     освещение по всем длинам волн).
     """
     if csv_path is None:
-        csv_path = str(
-            Path(__file__).resolve().parents[1] / "input" / "sample_spectrum.csv"
-        )
+        csv_path = str(Path(__file__).resolve().parents[1] / "input" / "sample_spectrum.csv")
 
     spectrum = read_spectrum_from_csv(csv_path)
     max_val = max(spectrum)

@@ -6,9 +6,7 @@ def convert_scene_to_exposure(
     config: OpticsConfig,
 ) -> SensorExposure:
     optical_data = convert_scene_to_channels_rgb(scene, config, scene.spectral_axis)
-    return SensorExposure(
-        channel_irradiance=optical_data, spectral_axis=scene.spectral_axis
-    )
+    return SensorExposure(channel_irradiance=optical_data, spectral_axis=scene.spectral_axis)
 
 
 def build_default_optics_config() -> OpticsConfig:
@@ -59,15 +57,9 @@ def convert_scene_to_channels_rgb(
             spectrum = scene_data[y][x]
 
             # Суммируем энергию в каждой спектральной полосе
-            r_value = (
-                sum(spectrum[i] for i in r_indices) * optics_config.transmission[0]
-            )
-            g_value = (
-                sum(spectrum[i] for i in g_indices) * optics_config.transmission[1]
-            )
-            b_value = (
-                sum(spectrum[i] for i in b_indices) * optics_config.transmission[2]
-            )
+            r_value = sum(spectrum[i] for i in r_indices) * optics_config.transmission[0]
+            g_value = sum(spectrum[i] for i in g_indices) * optics_config.transmission[1]
+            b_value = sum(spectrum[i] for i in b_indices) * optics_config.transmission[2]
 
             exposure_row.append([r_value, g_value, b_value])
 
