@@ -18,7 +18,7 @@ def build_default_optics_config() -> OpticsConfig:
         mask_pattern="checkerboard amplitude mask",
         transmission=[0.95, 0.90, 0.85],  # R, G, B — синий обычно пропускается хуже
         recombination_mode="multi-channel",
-        rgb_ranges_nm=[(400, 500), (500, 600), (600, 700)],
+        rgb_ranges_nm=[(380, 480), (480, 600), (600, 730)],
         description="RGB конфигурация оптики",
     )
 
@@ -43,22 +43,17 @@ def convert_scene_to_channels_rgb(
     wavelengths = spectral_axis.wave
 
     # Определяем, какие индексы спектра попадают в R, G, B
+    # Границы подобраны так, чтобы пик спектра (~520–530 нм) попадал в G.
     r_indices = [i for i, w in enumerate(wavelengths) if 600 <= w <= 730]
-    g_indices = [i for i, w in enumerate(wavelengths) if 500 <= w < 600]
-    b_indices = [i for i, w in enumerate(wavelengths) if 380 <= w < 500]
+    g_indices = [i for i, w in enumerate(wavelengths) if 480 <= w < 600]
+    b_indices = [i for i, w in enumerate(wavelengths) if 380 <= w < 480]
 
     height = len(scene_data)
     width = len(scene_data[0])
 
-    r_band: list[list[float]] = []
-    g_band: list[list[float]] = []
-    b_band: list[list[float]] = []
     sensor_exposure: list[list[list[float]]] = []  # (H, W, 3)
 
     for y in range(height):
-        r_row: list[float] = []
-        g_row: list[float] = []
-        b_row: list[float] = []
         exposure_row: list[list[float]] = []
         for x in range(width):
             spectrum = scene_data[y][x]
@@ -74,14 +69,8 @@ def convert_scene_to_channels_rgb(
                 sum(spectrum[i] for i in b_indices) * optics_config.transmission[2]
             )
 
-            r_row.append(r_value)
-            g_row.append(g_value)
-            b_row.append(b_value)
             exposure_row.append([r_value, g_value, b_value])
 
-        r_band.append(r_row)
-        g_band.append(g_row)
-        b_band.append(b_row)
         sensor_exposure.append(exposure_row)
 
-    return sensor_exposure  # теперь 3D: H×W×3
+    return sensor_exposure  # 3D: H×W×3

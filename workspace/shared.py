@@ -1,190 +1,8 @@
 from __future__ import annotations
 
-import math
 import struct
+from collections.abc import Sequence
 from pathlib import Path
-
-from workspace.models import SpectralAxis
-
-
-def create_default_axis(
-    start_nm: int = 400, stop_nm: int = 700, step_nm: int = 20
-) -> SpectralAxis:
-    """
-    Создает стандартную спектральную сетку для всех role-stub модулей.
-
-    Input:
-    - `start_nm`, `stop_nm`, `step_nm`: границы и шаг спектральной сетки.
-
-    Output:
-    - `SpectralAxis` с диапазоном, совместимым с примерами в `draft/`.
-
-    Пример:
-    - `draft/01_spectral_axis/example.py`
-    """
-
-    wavelengths = list(range(start_nm, stop_nm + 1, step_nm))
-    return SpectralAxis(wavelengths_nm=[float(value) for value in wavelengths])
-
-
-def normalize_vector(values: list[float]) -> list[float]:
-    """Нормализует одномерный вектор так, чтобы сумма значений была равна 1."""
-
-    total = sum(values)
-    if total <= 0.0:
-        return [0.0 for _ in values]
-    return [value / total for value in values]
-
-
-def gaussian_spectrum(
-    axis: SpectralAxis,
-    center_nm: float,
-    width_nm: float,
-    amplitude: float = 1.0,
-) -> list[float]:
-    """
-    Строит простое гауссово спектральное распределение.
-
-    Input:
-    - `axis`: спектральная ось, на которой нужно вычислить спектр.
-    - `center_nm`: центральная длина волны пика.
-    - `width_nm`: ширина спектрального распределения.
-    - `amplitude`: относительная амплитуда до нормализации.
-
-    Output:
-    - список значений спектра длиной `axis.band_count`.
-
-    Пример:
-    - `draft/02_scene/example.py`
-    - `draft/07_full_pipeline/main.py`
-    """
-
-    spectrum: list[float] = []
-    for wavelength in axis.wavelengths_nm:
-        exponent = -((wavelength - center_nm) ** 2) / (2.0 * width_nm**2)
-        spectrum.append(amplitude * math.exp(exponent))
-    return normalize_vector(spectrum)
-
-
-def build_default_reflectance_map(
-    height: int, width: int, axis: SpectralAxis
-) -> list[list[list[float]]]:
-    """
-    Создает детерминированную тестовую карту отражения объекта.
-
-    Input:
-    - `height`, `width`: размер тестовой сцены.
-    - `axis`: спектральная ось, на которой задаются коэффициенты отражения.
-
-    Output:
-    - трехмерная карта `(height, width, bands)` для `ObjectConfig.reflectance_map`.
-
-    Пример:
-    - `draft/lib.py` -> `build_test_reflectance_map`
-    - `draft/02_scene/example.py`
-    """
-
-    band_count = axis.band_count
-    background = [0.20 for _ in range(band_count)]
-    red_patch = gaussian_spectrum(axis, center_nm=620.0, width_nm=40.0, amplitude=1.0)
-    green_patch = gaussian_spectrum(axis, center_nm=540.0, width_nm=35.0, amplitude=1.0)
-
-    data: list[list[list[float]]] = []
-    for y in range(height):
-        row: list[list[float]] = []
-        for x in range(width):
-            cell = background[:]
-            if 4 <= y < height - 4 and 4 <= x < width - 4:
-                mix = red_patch if x < width // 2 else green_patch
-                cell = [0.15 + 0.85 * value for value in mix]
-            row.append(cell)
-        data.append(row)
-    return data
-
-
-def simulate_scene_matrix(
-    axis: SpectralAxis,
-    source_spectrum: list[float],
-    reflectance_map: list[list[list[float]]],
-) -> list[list[list[float]]]:
-    """
-    Формирует спектральную карту сцены как произведение источника и отражения.
-
-    Input:
-    - `axis`: спектральная ось.
-    - `source_spectrum`: спектр источника на этой оси.
-    - `reflectance_map`: карта отражения объекта `(H, W, bands)`.
-
-    Output:
-    - трехмерный массив для `SpectralImage.data`.
-
-    Пример:
-    - `draft/02_scene/example.py`
-    """
-
-    height = len(reflectance_map)
-    width = len(reflectance_map[0])
-    scene: list[list[list[float]]] = []
-    for y in range(height):
-        row: list[list[float]] = []
-        for x in range(width):
-            pixel = [
-                source_spectrum[band_index] * reflectance_map[y][x][band_index]
-                for band_index in range(axis.band_count)
-            ]
-            row.append(pixel)
-        scene.append(row)
-    return scene
-
-
-def split_optical_channels(
-    scene: list[list[list[float]]],
-    axis: SpectralAxis,
-) -> dict[str, list[list[float]]]:
-    """
-    Делит спектральную карту сцены на два оптических канала и собирает экспозицию.
-
-    Input:
-    - `scene`: спектральная карта сцены `(H, W, bands)`.
-    - `axis`: спектральная ось для определения границы разделения каналов.
-
-    Output:
-    - словарь с ключами `channel_low`, `channel_high`, `sensor_exposure`.
-
-    Пример:
-    - `draft/03_optics/example.py`
-    - `draft/lib.py` -> `apply_optical_encoder`
-    """
-
-    split_index = axis.band_count // 2
-    height = len(scene)
-    width = len(scene[0])
-
-    low_band: list[list[float]] = []
-    high_band: list[list[float]] = []
-    combined: list[list[float]] = []
-
-    for y in range(height):
-        low_row: list[float] = []
-        high_row: list[float] = []
-        combined_row: list[float] = []
-        for x in range(width):
-            spectrum = scene[y][x]
-            mask_factor = 1.0 if (x + y) % 2 == 0 else 0.72
-            low_value = sum(spectrum[:split_index]) * 0.95 * mask_factor
-            high_value = sum(spectrum[split_index:]) * 0.90 * (2.0 - mask_factor)
-            low_row.append(low_value)
-            high_row.append(high_value)
-            combined_row.append(low_value + high_value)
-        low_band.append(low_row)
-        high_band.append(high_row)
-        combined.append(combined_row)
-
-    return {
-        "channel_low": low_band,
-        "channel_high": high_band,
-        "sensor_exposure": combined,
-    }
 
 
 def integrate_sensor_charge(
@@ -192,20 +10,7 @@ def integrate_sensor_charge(
     gain: float,
     dark_offset: float,
 ) -> list[list[float]]:
-    """
-    Переводит карту экспозиции в карту накопленного заряда.
-
-    Input:
-    - `exposure_map`: двумерная карта энергии на сенсоре.
-    - `gain`: коэффициент усиления модели сенсора.
-    - `dark_offset`: добавка темнового сигнала.
-
-    Output:
-    - двумерная карта заряда для `ChargeMatrix.charge`.
-
-    Пример:
-    - `draft/04_sensor/example.py`
-    """
+    """Переводит карту экспозиции в карту накопленного заряда."""
 
     charge: list[list[float]] = []
     for y, row in enumerate(exposure_map):
@@ -221,20 +26,7 @@ def integrate_sensor_charge(
 def quantize_frame(
     charge_map: list[list[float]], bit_depth: int, full_scale: float
 ) -> list[list[int]]:
-    """
-    Квантование аналогового сигнала в целочисленный цифровой кадр.
-
-    Input:
-    - `charge_map`: карта накопленного заряда.
-    - `bit_depth`: разрядность АЦП.
-    - `full_scale`: уровень насыщения, соответствующий максимальному коду.
-
-    Output:
-    - двумерный целочисленный кадр для `DigitalFrame.data`.
-
-    Пример:
-    - `draft/05_adc/example.py`
-    """
+    """Квантование аналогового сигнала в целочисленный цифровой кадр."""
 
     max_code = (1 << bit_depth) - 1
     frame: list[list[int]] = []
@@ -248,12 +40,7 @@ def quantize_frame(
 
 
 def normalize_frame_to_u8(frame: list[list[int]]) -> list[list[int]]:
-    """
-    Нормализует цифровой кадр в диапазон 0..255 для быстрых preview-изображений.
-
-    Пример:
-    - `draft/06_reconstruction_export/example.py`
-    """
+    """Нормализует цифровой кадр в диапазон 0..255."""
 
     flat = [value for row in frame for value in row]
     minimum = min(flat)
@@ -272,7 +59,7 @@ def normalize_frame_to_u8(frame: list[list[int]]) -> list[list[int]]:
 
 
 def save_grayscale_bmp(image: list[list[int]], path: Path) -> None:
-    """Сохраняет двумерный grayscale preview в `bmp`, как в `draft/07_full_pipeline/main.py`."""
+    """Сохраняет двумерный grayscale preview в 24-битный `bmp`."""
 
     height = len(image)
     width = len(image[0])
@@ -310,62 +97,34 @@ def save_grayscale_bmp(image: list[list[int]], path: Path) -> None:
         file.write(pixel_bytes)
 
 
-def demosaic_superpixel(raw: list[list[int]]) -> list[list[list[int]]]:
-    """
-    Простейший демозаик 2x2 (superpixel) для шаблона Байера:
-
-        | G | R |
-        | B | G |
-
-    Каждый блок 2x2 сворачивается в один RGB-пиксель: R и B берутся напрямую,
-    G усредняется по двум зелёным. Разрешение уменьшается вдвое по каждой оси,
-    зато нет краевых артефактов интерполяции — это честное «что реально
-    разрешает» байеровский сенсор.
-
-    Input:
-    - `raw`: двумерный raw mosaic-кадр (`DigitalFrame.data`).
-
-    Output:
-    - трёхмерный список формы `(H//2, W//2, 3)` со значениями R, G, B.
-    """
-
-    height = len(raw) - (len(raw) % 2)
-    width = (len(raw[0]) - (len(raw[0]) % 2)) if raw else 0
-
-    rgb: list[list[list[int]]] = []
-    for y in range(0, height, 2):
-        rgb_row: list[list[int]] = []
-        for x in range(0, width, 2):
-            green_top = raw[y][x]          # G
-            red = raw[y][x + 1]            # R
-            blue = raw[y + 1][x]           # B
-            green_bottom = raw[y + 1][x + 1]  # G
-            rgb_row.append([red, (green_top + green_bottom) // 2, blue])
-        rgb.append(rgb_row)
-    return rgb
-
-
-def normalize_rgb_to_u8(image: list[list[list[int]]]) -> list[list[list[int]]]:
+def normalize_rgb_to_u8(
+    image: list[list[list[int]]], gamma: float = 0.4
+) -> list[list[list[int]]]:
     """
     Нормализует RGB-кадр в диапазон 0..255 единым масштабом по всем каналам,
-    чтобы не разрушить цветовой баланс.
+    чтобы не разрушить цветовой баланс, с опциональной гамма-коррекцией.
+
+    Вместо min-max stretching используется деление на глобальный максимум
+    (без вычитания минимума). Это сохраняет хроматичность даже в ярких
+    пикселях после геометрического затухания 1/r².
     """
 
     flat = [value for row in image for pixel in row for value in pixel]
-    minimum = min(flat)
     maximum = max(flat)
-    if maximum == minimum:
+    if maximum == 0:
         return [[[0, 0, 0] for _ in row] for row in image]
 
     result: list[list[list[int]]] = []
     for row in image:
         result_row: list[list[int]] = []
         for pixel in row:
-            scaled = [
-                max(0, min(255, int(round((value - minimum) * 255.0 / (maximum - minimum)))))
-                for value in pixel
+            # Масштабирование относительно глобального максимума
+            normed = [value / maximum for value in pixel]
+            # Гамма-коррекция (одинаковая для всех каналов — сохраняет оттенок)
+            corrected = [
+                max(0, min(255, int(round((v**gamma) * 255.0)))) for v in normed
             ]
-            result_row.append(scaled)
+            result_row.append(corrected)
         result.append(result_row)
     return result
 
@@ -416,7 +175,7 @@ def save_rgb_bmp(image: list[list[list[int]]], path: Path) -> None:
         file.write(pixel_bytes)
 
 
-def summarize_matrix(matrix: list[list[float | int]]) -> str:
+def summarize_matrix(matrix: Sequence[Sequence[float | int]]) -> str:
     """Возвращает короткую строку со статистикой по двумерной матрице."""
 
     height = len(matrix)

@@ -1,9 +1,11 @@
 """Рабочее место роли: модель сцены и источника.
 Гостев М.А."""
 
+import csv
 import math
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 from workspace.models import (
     ObjectConfig,
@@ -39,6 +41,20 @@ def read_spectrum_from_txt(file_path: str) -> list[float]:
 
     values = re.findall(r"[-+]?\d*\.\d+|\d+", first_line)
     return [float(value) for value in values]
+
+
+def read_spectrum_from_csv(file_path: str, column: str = "value") -> list[float]:
+    """
+    Читает спектральные значения из CSV-файла.
+
+    По умолчанию ожидает колонку `value` (как в `sample_spectrum.csv`).
+    """
+    values: list[float] = []
+    with open(file_path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            values.append(float(row[column]))
+    return values
 
 
 def build_axis_by_step(start: float, step: float, count: int) -> SpectralAxis:
@@ -92,10 +108,7 @@ def build_optic_input(
             cos_angle = calculate_cos_angle(point_position, source.position)
 
             point_spectrum = [
-                round(
-                    source.spectrum[band] * cos_angle / (r**2) * obj.reflectance[band],
-                    4,
-                )
+                source.spectrum[band] * cos_angle / (r**2) * obj.reflectance[band]
                 for band in range(axis.bands_count)
             ]
 
@@ -139,49 +152,30 @@ def build_scene_source(input_data: SceneSourceInput) -> SceneSourceArtifacts:
     )
 
 
-def get_scene_source_input() -> SceneSourceInput:
-    ref = [
-        7.19772,
-        8.66835,
-        10.0241,
-        10.6711,
-        10.9908,
-        11.318,
-        11.713,
-        12.13,
-        12.5267,
-        12.8175,
-        13.015,
-        13.1402,
-        13.2771,
-        13.4178,
-        13.5352,
-        13.54,
-        13.4372,
-        13.1751,
-        12.6869,
-        12.1096,
-        11.3222,
-        10.3386,
-        9.22227,
-        8.32678,
-        7.86045,
-        7.65831,
-        7.57516,
-        7.56342,
-        7.72733,
-        8.0386,
-        8.40108,
-        8.71172,
-        8.92745,
-        9.01649,
-        9.01843,
-        9.165,
-    ]
+def get_scene_source_input(csv_path: str | None = None) -> SceneSourceInput:
+    """
+    Формирует входные данные для сцены.
+
+    Если передан `csv_path`, значения `reflectance` читаются из CSV
+    (колонка `value`). В противном случае используется дефолтный путь
+    ``workspace/input/sample_spectrum.csv``.
+
+    ``radiation`` задаётся единичным спектром той же длины (равномерное
+    освещение по всем длинам волн).
+    """
+    if csv_path is None:
+        csv_path = str(
+            Path(__file__).resolve().parents[1] / "input" / "sample_spectrum.csv"
+        )
+
+    spectrum = read_spectrum_from_csv(csv_path)
+    max_val = max(spectrum)
+    reflectance = [v / max_val for v in spectrum]
+
     return SceneSourceInput(
-        radiation=[1] * len(ref),
+        radiation=[1.0] * len(spectrum),
         source_xyz=[10.0, 10.0, 50.0],
-        reflectance=ref,
+        reflectance=reflectance,
         object_height=32,
         object_width=32,
         point_size=10,

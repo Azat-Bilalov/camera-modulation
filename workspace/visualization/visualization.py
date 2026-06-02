@@ -2,45 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from workspace.models import DigitalFrame, ExportConfig, PipelineArtifacts, ReconstructionConfig
-from workspace.shared import normalize_frame_to_u8, save_grayscale_bmp, summarize_matrix
-
-
-def build_default_reconstruction_config() -> ReconstructionConfig:
-    """
-    Возвращает дефолтные параметры постобработки цифрового кадра.
-
-    Input:
-    - входных параметров не требуется.
-
-    Output:
-    - `ReconstructionConfig`.
-
-    Где смотреть пример:
-    - `draft/06_reconstruction_export/example.py`
-    """
-
-    return ReconstructionConfig(
-        normalize_to_u8=True,
-        defect_correction=True,
-        contrast_stretch=True,
-        description="Заглушка параметров реконструкции для роли visualization",
-    )
+from workspace.models import ExportConfig, PipelineArtifacts
+from workspace.shared import summarize_matrix
 
 
 def build_default_export_config(output_dir: str | None = None) -> ExportConfig:
     """
     Возвращает настройки сохранения итогового кадра и служебных артефактов.
-
-    Input:
-    - `output_dir`: путь к каталогу вывода; если не задан, берется `workspace/outputs`.
-
-    Output:
-    - `ExportConfig`.
-
-    Где смотреть пример:
-    - `draft/06_reconstruction_export/example.py`
-    - `draft/07_full_pipeline/main.py`
     """
 
     target_dir = output_dir or str(Path(__file__).resolve().parents[1] / "outputs")
@@ -53,75 +21,43 @@ def build_default_export_config(output_dir: str | None = None) -> ExportConfig:
     )
 
 
-def build_default_preview(frame: DigitalFrame, reconstruction_config: ReconstructionConfig) -> list[list[int]]:
-    """
-    Подготавливает простой preview-кадр для архитектора и для тестовой визуализации.
-
-    Input:
-    - `frame`: цифровой кадр после АЦП.
-    - `reconstruction_config`: параметры постобработки.
-
-    Output:
-    - двумерная матрица `0..255`, пригодная для сохранения в `bmp`.
-
-    Где смотреть пример:
-    - `draft/06_reconstruction_export/example.py`
-    """
-
-    _ = reconstruction_config
-    return normalize_frame_to_u8(frame.data)
-
-
-def export_default_preview(image: list[list[int]], export_config: ExportConfig) -> Path:
-    """
-    Сохраняет preview-изображение в файл на основе `ExportConfig`.
-
-    Input:
-    - `image`: двумерный массив 0..255.
-    - `export_config`: настройки каталога и формата вывода.
-
-    Output:
-    - `Path` к сохраненному изображению.
-
-    Где смотреть пример:
-    - `draft/07_full_pipeline/main.py`
-    """
-
-    output_dir = Path(export_config.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    image_path = output_dir / f"final_preview.{export_config.image_format}"
-    save_grayscale_bmp(image, image_path)
-    return image_path
-
-
 def build_default_report(artifacts: PipelineArtifacts, image_path: Path) -> str:
     """
     Собирает подробный текстовый отчет для архитектора и роли верификации.
     """
-    # Импортируем функции верификации
     from workspace.visualization.verifier import (
         calculate_image_statistics,
         verify_digital_range,
-        verify_no_clipping
+        verify_no_clipping,
     )
 
-    # Получаем статистику по кадру
-    frame_stats = calculate_image_statistics(artifacts.frame.data, artifacts.frame.bit_depth)
+    frame_stats = calculate_image_statistics(
+        artifacts.frame.data, artifacts.frame.bit_depth
+    )
     range_check = verify_digital_range(artifacts.frame.data, artifacts.frame.bit_depth)
     clip_check = verify_no_clipping(artifacts.frame.data, artifacts.frame.bit_depth)
 
-    # Формируем отчёт
+    exposure_data = artifacts.exposure.channel_irradiance
+    if exposure_data:
+        flat = [v for row in exposure_data for pixel in row for v in pixel]
+        exposure_summary = (
+            f"size={len(exposure_data)}x{len(exposure_data[0])}x3, "
+            f"min={min(flat):.4f}, max={max(flat):.4f}, mean={sum(flat) / len(flat):.4f}"
+        )
+    else:
+        exposure_summary = "N/A"
+
     report_lines = [
         "=" * 60,
         "ОТЧЁТ ПО РАБОТЕ МОДУЛЯ ВИЗУАЛИЗАЦИИ И ЭКСПОРТА",
         "=" * 60,
         "",
         "--- ОСНОВНАЯ ИНФОРМАЦИЯ ---",
-        f"Спектральных диапазонов: {artifacts.axis.band_count}",
+        f"Спектральных диапазонов: {artifacts.axis.bands_count}",
         f"Оптические каналы: {[ch.channel_id for ch in artifacts.optical_channels]}",
         "",
         "--- ПАРАМЕТРЫ СЕНСОРА ---",
-        f"Экспозиция: {summarize_matrix(artifacts.exposure.irradiance)}",
+        f"Экспозиция: {exposure_summary}",
         f"Заряд: {summarize_matrix(artifacts.charge.charge)}",
         "",
         "--- ЦИФРОВОЙ КАДР ---",
