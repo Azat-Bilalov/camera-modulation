@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import streamlit as st
+import plotly.graph_objects as go
 
 from workspace.models import (
     AdcConfig,
@@ -123,7 +124,126 @@ with st.sidebar:
         bit_depth = st.slider("Разрядность, бит", 8, 16, 10, 1)
         full_scale = st.slider("Full scale", 100.0, 10000.0, 900.0, 50.0)
 
+    with st.expander("📐 Геометрия источник ↔ приёмник", expanded=True):
+        st.markdown("**💡 Источник света**")
+        src_x = st.slider("X источника", -1000, 1000, 0, 10)
+        src_y = st.slider("Y источника", -1000, 1000, 0, 10)
+        src_z = st.slider("Z источника (высота)", 1, 1000, 200, 10)
+
+        st.markdown("**📦 Приёмник (сенсор)**")
+        rx = st.slider("X приёмника", -1000, 1000, 0, 10)
+        ry = st.slider("Y приёмника", -1000, 1000, 0, 10)
+        rz = st.slider("Z приёмника", 0, 100, 0, 1)
+
+        # Расчёт геометрических параметров
+        dx = rx - src_x
+        dy = ry - src_y
+        dz = rz - src_z
+        distance_to_receiver = np.sqrt(dx * dx + dy * dy + dz * dz) if (dx * dx + dy * dy + dz * dz) > 0 else 0.001
+        angle_of_incidence = np.degrees(np.arccos(abs(dz) / distance_to_receiver)) if distance_to_receiver > 0 else 0
+
+        st.caption(f"📏 Расстояние: {distance_to_receiver:.0f} мм | 📐 Угол падения: {angle_of_incidence:.1f}°")
+
+        if distance_to_receiver > 1000:
+            st.warning("⚠️ Слишком большое расстояние — сигнал будет очень слабым!")
+
+        # Чекбокс для показа 3D-сцены на главном экране
+        show_3d = st.checkbox("✨ Показать 3D-сцену", key="show_3d_scene")
+
     run = st.button("▶ Запустить симуляцию", use_container_width=True)
+
+
+# ──────────────────────────────────────────────────────────────
+# ОТОБРАЖЕНИЕ 3D-СЦЕНЫ НА ГЛАВНОМ ЭКРАНЕ
+# ──────────────────────────────────────────────────────────────
+if show_3d:
+    st.subheader("🗺️ 3D-визуализация геометрии")
+
+    # Расчёт параметров для отображения
+    dx = rx - src_x
+    dy = ry - src_y
+    dz = rz - src_z
+    distance = np.sqrt(dx * dx + dy * dy + dz * dz) if (dx * dx + dy * dy + dz * dz) > 0 else 0.001
+    angle = np.degrees(np.arccos(abs(dz) / distance)) if distance > 0 else 0
+
+    # Создание красивой 3D-сцены
+    fig = go.Figure()
+
+    # Источник света
+    fig.add_trace(go.Scatter3d(
+        x=[src_x], y=[src_y], z=[src_z],
+        mode='markers+text',
+        marker=dict(size=14, color='#FFD700', symbol='circle', line=dict(color='#FF8C00', width=2)),
+        text=['💡'], textposition='top center',
+        textfont=dict(size=16, color='#FFD700'),
+        name='💡 Источник'
+    ))
+
+    # Приёмник
+    fig.add_trace(go.Scatter3d(
+        x=[rx], y=[ry], z=[rz],
+        mode='markers+text',
+        marker=dict(size=11, color='#FF4444', symbol='square', line=dict(color='#8B0000', width=2)),
+        text=['📷'], textposition='top center',
+        textfont=dict(size=14, color='#FF4444'),
+        name='📷 Приёмник'
+    ))
+
+    # Луч света
+    fig.add_trace(go.Scatter3d(
+        x=[src_x, rx], y=[src_y, ry], z=[src_z, rz],
+        mode='lines',
+        line=dict(color='#FFA500', width=5, dash='solid'),
+        name='✨ Световой луч'
+    ))
+
+    # Границы пространства
+    size = 1000
+    corners = [[-size, -size, 0], [size, -size, 0], [size, size, 0], [-size, size, 0], [-size, -size, 0]]
+    fig.add_trace(go.Scatter3d(
+        x=[c[0] for c in corners], y=[c[1] for c in corners], z=[c[2] for c in corners],
+        mode='lines', line=dict(color='#4A90D9', width=2, dash='dash'),
+        name='📐 Граница пространства'
+    ))
+
+    # Настройки внешнего вида
+    fig.update_layout(
+        title=dict(
+            text=f"📏 Расстояние: {distance:.0f} мм | 📐 Угол падения: {angle:.1f}°",
+            font=dict(size=14, color='#2C3E50'),
+            x=0.5
+        ),
+        height=550,
+        scene=dict(
+            xaxis_title='<b>X (мм)</b>',
+            yaxis_title='<b>Y (мм)</b>',
+            zaxis_title='<b>Z (мм)</b>',
+            aspectmode='manual',
+            aspectratio=dict(x=1, y=1, z=0.4),
+            camera=dict(eye=dict(x=1.5, y=1.5, z=1.5)),
+            bgcolor='#F5F5F5',
+            xaxis=dict(gridcolor='#E0E0E0'),
+            yaxis=dict(gridcolor='#E0E0E0'),
+            zaxis=dict(gridcolor='#E0E0E0'),
+        ),
+        margin=dict(l=0, r=0, b=0, t=50),
+        plot_bgcolor='#FFFFFF',
+        paper_bgcolor='#FFFFFF',
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Информационная панель
+    col_info1, col_info2, col_info3 = st.columns(3)
+    with col_info1:
+        st.metric("💡 Источник", f"({src_x}, {src_y}, {src_z}) мм")
+    with col_info2:
+        st.metric("📷 Приёмник", f"({rx}, {ry}, {rz}) мм")
+    with col_info3:
+        attenuation = 1.0 / ((distance/1000)**2 + 1e-6)
+        st.metric("⚡ Ослабление", f"{attenuation:.3f}")
+
+    st.divider()
 
 
 # ──────────────────────────────────────────────────────────────
@@ -152,7 +272,10 @@ def _parse_uploaded_spectrum(uploaded_file) -> tuple[list[float], list[float]]:
 # ──────────────────────────────────────────────────────────────
 # Выполнение пайплайна
 # ──────────────────────────────────────────────────────────────
-def run_pipeline() -> tuple:
+def run_pipeline(
+        src_x: float, src_y: float, src_z: float,
+        rx: float, ry: float, rz: float,
+) -> tuple:
     # 1. Спектральная ось
     axis = create_default_axis(start_nm=start_nm, stop_nm=stop_nm, step_nm=step_nm)
 
@@ -179,30 +302,73 @@ def run_pipeline() -> tuple:
         source_type = "uploaded-csv"
         source_description = f"Загруженный спектр ({uploaded_file.name})"
 
+    # ─── ГЕОМЕТРИЧЕСКОЕ ОСЛАБЛЕНИЕ ──────────────────────────
+    dx = rx - src_x
+    dy = ry - src_y
+    dz = rz - src_z
+    distance = max(np.sqrt(dx * dx + dy * dy + dz * dz), 1.0)  # мм
+    distance_m = distance / 1000.0
+    attenuation_distance = 1.0 / (distance_m * distance_m + 1e-6)
+    angle_rad = np.arccos(abs(dz) / distance) if distance > 0 else 0
+    attenuation_angle = max(0.0, np.cos(angle_rad))
+    total_attenuation = attenuation_distance * attenuation_angle
+
+    # Применяем ослабление к интенсивности источника
+    effective_intensity = intensity * total_attenuation
+    # Применяем ослабление к спектру
+    source_spectrum = [s * total_attenuation for s in source_spectrum]
+    # ────────────────────────────────────────────────────────
+
     source = SourceConfig(
-        source_type=source_type,
-        intensity=intensity,
         spectrum=source_spectrum,
-        description=source_description,
+        position=[src_x, src_y, src_z],
     )
 
-    # 3. Объект / сцена
-    reflectance_map = build_default_reflectance_map(
-        height=height, width=width, axis=axis
-    )
-    obj = ObjectConfig(
-        object_name="test-target",
-        height=height,
-        width=width,
-        reflectance_map=reflectance_map,
-        description="Интерактивная сцена",
-    )
-    scene_data = simulate_scene_matrix(axis, source_spectrum, reflectance_map)
+    # # 3. Объект / сцена
+    # reflectance_map = build_default_reflectance_map(
+    #     height=height, width=width, axis=axis
+    # )
+    # obj = ObjectConfig(
+    #     object_name="test-target",
+    #     height=height,
+    #     width=width,
+    #     reflectance_map=reflectance_map,
+    #     description="Интерактивная сцена",
+    # )
+    # scene_data = simulate_scene_matrix(axis, source_spectrum, reflectance_map)
+    # scene = SpectralImage(
+    #     data=scene_data,
+    #     spectral_axis=axis,
+    #     description="Спектральная карта сцены",
+    # )
+
+    # 3. Объект / сцена с пятном, зависящим от геометрии
+    # 3. Объект / сцена с пятном, зависящим от геометрии
+    scene_data = []
+    for y in range(height):
+        row = []
+        for x in range(width):
+            # Нормализованные координаты [-1..1]
+            nx = (2 * x - width) / width
+            ny = (2 * y - height) / height
+
+            # Смещение пятна в зависимости от положения источника
+            spot_x = nx - src_x / 500
+            spot_y = ny - src_y / 500
+
+            # Интенсивность пятна (убывает от центра)
+            distance_from_center = np.sqrt(spot_x ** 2 + spot_y ** 2)
+            spot_intensity = max(0, 1 - distance_from_center)
+
+            # Заполняем спектр
+            pixel = [spot_intensity * s for s in source_spectrum]
+            row.append(pixel)
+        scene_data.append(row)
+
     scene = SpectralImage(
         data=scene_data,
         spectral_axis=axis,
-        source_name=source.source_type,
-        description="Спектральная карта сцены",
+        description="Сцена с пятном, зависящим от геометрии",
     )
 
     # 4. Оптика
@@ -310,7 +476,10 @@ if run:
             exposure_arr,
             charge_arr,
             source_spectrum,
-        ) = run_pipeline()
+        ) = run_pipeline(
+            src_x, src_y, src_z,
+            rx, ry, rz,
+        )
 
     # ── Результаты ──
     st.success("Симуляция завершена!")
@@ -403,7 +572,7 @@ if run:
         )
         ax.set_xlabel("Длина волны, нм")
         ax.set_ylabel("Относительная интенсивность")
-        ax.set_title(artifacts.source.description)
+        ax.set_title("Спектр источника")
         ax.grid(True, ls="--", alpha=0.4)
         st.pyplot(fig, use_container_width=True)
 
@@ -432,9 +601,9 @@ if run:
             "=" * 60,
             "",
             "--- ОСНОВНАЯ ИНФОРМАЦИЯ ---",
-            f"Спектральных диапазонов: {artifacts.axis.band_count}",
+            f"Спектральных диапазонов: {artifacts.axis.bands_count}",
             f"Оптические каналы: {[ch.channel_id for ch in artifacts.optical_channels]}",
-            f"Размер сцены: {artifacts.scene.height}×{artifacts.scene.width}",
+             f"Размер сцены: {len(artifacts.scene.data)}×{len(artifacts.scene.data[0])}",
             "",
             "--- ПАРАМЕТРЫ СЕНСОРА ---",
             f"Gain: {artifacts.charge.sensor_config.gain}",
