@@ -4,7 +4,7 @@ Streamlit-обёртка над workspace pipeline.
 Запуск:
     source .venv/bin/activate && streamlit run streamlit_app/app.py
 
-Все расчёты выполняются через модули workspace/ и draft/models,
+Все расчёты выполняются через модули workspace/,
 никакие исходные файлы проекта не модифицируются.
 """
 
@@ -13,43 +13,43 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-# Добавляем корень проекта в PYTHONPATH, чтобы импортировать workspace
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+# ruff: noqa: E402
 import io
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import streamlit as st
 import plotly.graph_objects as go
+import streamlit as st
 
 from workspace.models import (
     AdcConfig,
     ChargeMatrix,
     DigitalFrame,
-    ObjectConfig,
+    ExportConfig,
     OpticalChannel,
     OpticsConfig,
     PipelineArtifacts,
-    ReconstructionConfig,
     SensorConfig,
-    SensorExposure,
-    SourceConfig,
-    SpectralAxis,
-    SpectralImage,
+)
+from workspace.optics.optics_transformer import (
+    convert_scene_to_exposure,
+)
+from workspace.scene_source.scene_models import (
+    SceneSourceInput,
+    build_axis_by_step,
+    build_scene_source,
+    read_spectrum_from_csv,
+)
+from workspace.sensor_adc.sensor_pipeline import (
+    build_rgb_frame,
 )
 from workspace.shared import (
-    build_default_reflectance_map,
-    create_default_axis,
-    gaussian_spectrum,
-    integrate_sensor_charge,
     normalize_frame_to_u8,
-    normalize_vector,
-    quantize_frame,
-    simulate_scene_matrix,
-    split_optical_channels,
+    normalize_rgb_to_u8,
     summarize_matrix,
 )
 from workspace.visualization.verifier import (
@@ -63,368 +63,257 @@ from workspace.visualization.verifier import (
 # ──────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Camera Modulation Simulator",
-    page_icon="📷",
+    page_icon="",
     layout="wide",
 )
 
-st.title("📷 Симуляция камеры: спектральный пайплайн")
+st.title(" Симуляция камеры: спектральный пайплайн")
 st.caption("Все расчёты — через `workspace/`. Исходные модули проекта не изменены.")
+
 
 # ──────────────────────────────────────────────────────────────
 # Боковая панель — параметры симуляции
 # ──────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.header("⚙️ Параметры симуляции")
+    st.header("️ Конфигурация пайплайна")
 
-    with st.expander("Спектральная ось", expanded=False):
-        start_nm = st.slider("Начало, нм", 300, 900, 400, 10)
-        stop_nm = st.slider("Конец, нм", 400, 1000, 700, 10)
-        step_nm = st.slider("Шаг, нм", 5, 100, 20, 5)
-        if start_nm >= stop_nm:
-            st.error("Начало диапазона должно быть меньше конца!")
-            st.stop()
+    with st.expander(" Сцена и источник", expanded=True):
+        st.markdown("** Источник света**")
+        src_x = st.slider("X источника", -500, 500, 10, 10)
+        src_y = st.slider("Y источника", -500, 500, 10, 10)
+        src_z = st.slider("Z источника (высота)", 1, 1000, 50, 10)
 
-    with st.expander("Источник света", expanded=True):
-        source_mode = st.radio(
-            "Тип источника",
-            ["Синтетический гаусс", "Загрузить спектр из CSV/TXT"],
+        st.markdown("** Объект (плоскость)**")
+        obj_width = st.slider("Ширина, px", 4, 128, 32, 4)
+        obj_height = st.slider("Высота, px", 4, 128, 32, 4)
+        point_size = st.slider("Размер точки (pixel_pitch)", 1.0, 50.0, 10.0, 1.0)
+
+        st.markdown("** Отражение (reflectance)**")
+        reflectance_file = st.file_uploader(
+            "CSV со спектром (колонка `value`)", type=["csv"]
         )
-        intensity = st.slider("Интенсивность", 0.1, 10.0, 1.0, 0.1)
-        center_nm = 560
-        width_nm = 90
-        uploaded_file = None
-        if source_mode == "Синтетический гаусс":
-            center_nm = st.slider("Центр спектра, нм", 400, 700, 560, 10)
-            width_nm = st.slider("Ширина спектра, нм", 1, 300, 90, 5)
+        if reflectance_file is None:
+            default_csv = Path(__file__).parent / "sample_spectrum.csv"
+            reflectance_values = read_spectrum_from_csv(str(default_csv))
         else:
-            uploaded_file = st.file_uploader("CSV/TXT со спектром", type=["csv", "txt"])
-            sample_path = Path(__file__).parent / "sample_spectrum.csv"
-            if sample_path.exists():
-                st.download_button(
-                    "📥 Скачать пример CSV",
-                    sample_path.read_bytes(),
-                    file_name="sample_spectrum.csv",
-                    mime="text/csv",
-                )
+            df = pd.read_csv(io.BytesIO(reflectance_file.getvalue()))
+            if "value" not in df.columns:
+                st.error("В CSV отсутствует колонка `value`!")
+                st.stop()
+            reflectance_values = df["value"].astype(float).tolist()
 
-    with st.expander("Сцена", expanded=False):
-        height = st.slider("Высота, px", 4, 256, 32, 4)
-        width = st.slider("Ширина, px", 4, 256, 40, 4)
+        max_val = max(reflectance_values)
+        reflectance = [v / max_val for v in reflectance_values]
 
-    with st.expander("Оптический тракт", expanded=False):
-        transmission_low = st.slider("Пропускание LOW", 0.0, 1.0, 0.95, 0.01)
-        transmission_high = st.slider("Пропускание HIGH", 0.0, 1.0, 0.90, 0.01)
+    with st.expander(" Оптический тракт (RGB)", expanded=False):
+        transmission_r = st.slider("Пропускание R", 0.0, 1.0, 0.95, 0.01)
+        transmission_g = st.slider("Пропускание G", 0.0, 1.0, 0.90, 0.01)
+        transmission_b = st.slider("Пропускание B", 0.0, 1.0, 0.85, 0.01)
 
-    with st.expander("Сенсор", expanded=False):
-        gain = st.slider("Gain", 100.0, 20000.0, 2000.0, 100.0)
+    with st.expander(" Сенсор", expanded=False):
+        gain = st.slider("Gain", 100.0, 50000.0, 2000.0, 100.0)
         dark_offset = st.slider("Dark offset", 0.0, 1.0, 0.002, 0.001)
-        exposure_time_s = st.slider("Время экспозиции, с", 0.001, 1.0, 0.01, 0.001)
 
-    with st.expander("АЦП", expanded=False):
+    with st.expander(" АЦП", expanded=False):
         bit_depth = st.slider("Разрядность, бит", 8, 16, 10, 1)
-        full_scale = st.slider("Full scale", 100.0, 10000.0, 900.0, 50.0)
+        full_scale = st.slider("Full scale", 1.0, 1000.0, 8.0, 1.0)
 
-    with st.expander("📐 Геометрия источник ↔ приёмник", expanded=True):
-        st.markdown("**💡 Источник света**")
-        src_x = st.slider("X источника", -1000, 1000, 0, 10)
-        src_y = st.slider("Y источника", -1000, 1000, 0, 10)
-        src_z = st.slider("Z источника (высота)", 1, 1000, 200, 10)
+    st.markdown("**️ Отображение**")
+    auto_normalize = st.checkbox(
+        "Автонормализация яркости (min-max stretch)",
+        value=True,
+        help="Если включено — яркость растягивается на весь диапазон 0..255. "
+        "Если выключено — показываются физические значения АЦП (будет темно при слабом сигнале).",
+    )
 
-        st.markdown("**📦 Приёмник (сенсор)**")
-        rx = st.slider("X приёмника", -1000, 1000, 0, 10)
-        ry = st.slider("Y приёмника", -1000, 1000, 0, 10)
-        rz = st.slider("Z приёмника", 0, 100, 0, 1)
-
-        # Расчёт геометрических параметров
-        dx = rx - src_x
-        dy = ry - src_y
-        dz = rz - src_z
-        distance_to_receiver = np.sqrt(dx * dx + dy * dy + dz * dz) if (dx * dx + dy * dy + dz * dz) > 0 else 0.001
-        angle_of_incidence = np.degrees(np.arccos(abs(dz) / distance_to_receiver)) if distance_to_receiver > 0 else 0
-
-        st.caption(f"📏 Расстояние: {distance_to_receiver:.0f} мм | 📐 Угол падения: {angle_of_incidence:.1f}°")
-
-        if distance_to_receiver > 1000:
-            st.warning("⚠️ Слишком большое расстояние — сигнал будет очень слабым!")
-
-        # Чекбокс для показа 3D-сцены на главном экране
-        show_3d = st.checkbox("✨ Показать 3D-сцену", key="show_3d_scene")
+    # Чекбокс для показа 3D-сцены
+    show_3d = st.checkbox(" Показать 3D-сцену", key="show_3d_scene")
 
     run = st.button("▶ Запустить симуляцию", use_container_width=True)
 
 
 # ──────────────────────────────────────────────────────────────
-# ОТОБРАЖЕНИЕ 3D-СЦЕНЫ НА ГЛАВНОМ ЭКРАНЕ
+# 3D-визуализация геометрии
 # ──────────────────────────────────────────────────────────────
 if show_3d:
-    st.subheader("🗺️ 3D-визуализация геометрии")
+    st.subheader("️ 3D-визуализация геометрии")
 
-    # Расчёт параметров для отображения
-    dx = rx - src_x
-    dy = ry - src_y
-    dz = rz - src_z
-    distance = np.sqrt(dx * dx + dy * dy + dz * dz) if (dx * dx + dy * dy + dz * dz) > 0 else 0.001
+    # Размеры плоскости объекта
+    plane_w = (obj_width - 1) * point_size
+    plane_h = (obj_height - 1) * point_size
+    plane_z = 0.0
+
+    # Центр плоскости
+    cx, cy = plane_w / 2, plane_h / 2
+
+    dx = cx - src_x
+    dy = cy - src_y
+    dz = plane_z - src_z
+    distance = max(np.sqrt(dx * dx + dy * dy + dz * dz), 0.001)
     angle = np.degrees(np.arccos(abs(dz) / distance)) if distance > 0 else 0
 
-    # Создание красивой 3D-сцены
     fig = go.Figure()
 
     # Источник света
-    fig.add_trace(go.Scatter3d(
-        x=[src_x], y=[src_y], z=[src_z],
-        mode='markers+text',
-        marker=dict(size=14, color='#FFD700', symbol='circle', line=dict(color='#FF8C00', width=2)),
-        text=['💡'], textposition='top center',
-        textfont=dict(size=16, color='#FFD700'),
-        name='💡 Источник'
-    ))
+    fig.add_trace(
+        go.Scatter3d(
+            x=[src_x],
+            y=[src_y],
+            z=[src_z],
+            mode="markers+text",
+            marker=dict(
+                size=14,
+                color="#FFD700",
+                symbol="circle",
+                line=dict(color="#FF8C00", width=2),
+            ),
+            text=[""],
+            textposition="top center",
+            textfont=dict(size=16, color="#FFD700"),
+            name=" Источник",
+        )
+    )
 
-    # Приёмник
-    fig.add_trace(go.Scatter3d(
-        x=[rx], y=[ry], z=[rz],
-        mode='markers+text',
-        marker=dict(size=11, color='#FF4444', symbol='square', line=dict(color='#8B0000', width=2)),
-        text=['📷'], textposition='top center',
-        textfont=dict(size=14, color='#FF4444'),
-        name='📷 Приёмник'
-    ))
+    # Плоскость объекта (полупрозрачная сетка)
+    corners_x = [0, plane_w, plane_w, 0]
+    corners_y = [0, 0, plane_h, plane_h]
+    corners_z = [plane_z, plane_z, plane_z, plane_z]
 
-    # Луч света
-    fig.add_trace(go.Scatter3d(
-        x=[src_x, rx], y=[src_y, ry], z=[src_z, rz],
-        mode='lines',
-        line=dict(color='#FFA500', width=5, dash='solid'),
-        name='✨ Световой луч'
-    ))
+    fig.add_trace(
+        go.Mesh3d(
+            x=corners_x,
+            y=corners_y,
+            z=corners_z,
+            i=[0, 0],
+            j=[1, 2],
+            k=[2, 3],
+            color="#FF4444",
+            opacity=0.25,
+            name=" Объект (плоскость)",
+            hovertemplate="Объект: %{x:.1f}, %{y:.1f}, %{z:.1f}<extra></extra>",
+        )
+    )
 
-    # Границы пространства
-    size = 1000
-    corners = [[-size, -size, 0], [size, -size, 0], [size, size, 0], [-size, size, 0], [-size, -size, 0]]
-    fig.add_trace(go.Scatter3d(
-        x=[c[0] for c in corners], y=[c[1] for c in corners], z=[c[2] for c in corners],
-        mode='lines', line=dict(color='#4A90D9', width=2, dash='dash'),
-        name='📐 Граница пространства'
-    ))
+    # Контур плоскости
+    fig.add_trace(
+        go.Scatter3d(
+            x=corners_x + [corners_x[0]],
+            y=corners_y + [corners_y[0]],
+            z=corners_z + [corners_z[0]],
+            mode="lines",
+            line=dict(color="#8B0000", width=3),
+            name=" Граница объекта",
+            hoverinfo="skip",
+        )
+    )
 
-    # Настройки внешнего вида
+    # Лучи от источника к углам плоскости
+    for i in range(4):
+        fig.add_trace(
+            go.Scatter3d(
+                x=[src_x, corners_x[i]],
+                y=[src_y, corners_y[i]],
+                z=[src_z, corners_z[i]],
+                mode="lines",
+                line=dict(color="#FFA500", width=2, dash="dash"),
+                name=" Луч" if i == 0 else None,
+                showlegend=(i == 0),
+                hoverinfo="skip",
+            )
+        )
+
+    size = max(abs(src_x), abs(src_y), abs(src_z), plane_w, plane_h, 100)
     fig.update_layout(
         title=dict(
-            text=f"📏 Расстояние: {distance:.0f} мм | 📐 Угол падения: {angle:.1f}°",
-            font=dict(size=14, color='#2C3E50'),
-            x=0.5
+            text=f" Расстояние до центра: {distance:.0f} |  Угол: {angle:.1f}°",
+            font=dict(size=14, color="#2C3E50"),
+            x=0.5,
         ),
         height=550,
         scene=dict(
-            xaxis_title='<b>X (мм)</b>',
-            yaxis_title='<b>Y (мм)</b>',
-            zaxis_title='<b>Z (мм)</b>',
-            aspectmode='manual',
-            aspectratio=dict(x=1, y=1, z=0.4),
-            camera=dict(eye=dict(x=1.5, y=1.5, z=1.5)),
-            bgcolor='#F5F5F5',
-            xaxis=dict(gridcolor='#E0E0E0'),
-            yaxis=dict(gridcolor='#E0E0E0'),
-            zaxis=dict(gridcolor='#E0E0E0'),
+            xaxis_title="<b>X</b>",
+            yaxis_title="<b>Y</b>",
+            zaxis_title="<b>Z</b>",
+            aspectmode="cube",
+            camera=dict(eye=dict(x=1.5, y=1.5, z=1.2)),
+            bgcolor="#F5F5F5",
         ),
         margin=dict(l=0, r=0, b=0, t=50),
-        plot_bgcolor='#FFFFFF',
-        paper_bgcolor='#FFFFFF',
     )
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # Информационная панель
     col_info1, col_info2, col_info3 = st.columns(3)
     with col_info1:
-        st.metric("💡 Источник", f"({src_x}, {src_y}, {src_z}) мм")
+        st.metric(" Источник", f"({src_x}, {src_y}, {src_z})")
     with col_info2:
-        st.metric("📷 Приёмник", f"({rx}, {ry}, {rz}) мм")
+        st.metric(" Объект", f"{plane_w:.0f}×{plane_h:.0f} мм")
     with col_info3:
-        attenuation = 1.0 / ((distance/1000)**2 + 1e-6)
-        st.metric("⚡ Ослабление", f"{attenuation:.3f}")
+        attenuation = 1.0 / (distance**2 + 1e-6)
+        st.metric(" 1/r²", f"{attenuation:.6f}")
 
     st.divider()
 
 
 # ──────────────────────────────────────────────────────────────
-# Парсер загруженного спектра
+# Пайплайн
 # ──────────────────────────────────────────────────────────────
-def _parse_uploaded_spectrum(uploaded_file) -> tuple[list[float], list[float]]:
-    """Возвращает (wavelengths_nm, values) из CSV/TXT."""
-    bytes_data = uploaded_file.getvalue()
-    try:
-        df = pd.read_csv(io.BytesIO(bytes_data), sep=None, engine="python")
-    except Exception:
-        df = pd.read_csv(io.BytesIO(bytes_data), sep=r"\s+", engine="python")
-    if len(df.columns) >= 2:
-        df = df.iloc[:, :2].copy()
-        df.columns = ["wavelength_nm", "value"]
-    elif len(df.columns) == 1:
-        df.columns = ["value"]
-        df["wavelength_nm"] = [380 + i * 10 for i in range(len(df))]
-    else:
-        raise ValueError("Не удалось распознать формат файла")
-    return df["wavelength_nm"].astype(float).tolist(), df["value"].astype(
-        float
-    ).tolist()
-
-
-# ──────────────────────────────────────────────────────────────
-# Выполнение пайплайна
-# ──────────────────────────────────────────────────────────────
-def run_pipeline(
-        src_x: float, src_y: float, src_z: float,
-        rx: float, ry: float, rz: float,
-) -> tuple:
-    # 1. Спектральная ось
-    axis = create_default_axis(start_nm=start_nm, stop_nm=stop_nm, step_nm=step_nm)
-
-    # 2. Источник
-    if source_mode == "Синтетический гаусс":
-        source_spectrum = gaussian_spectrum(
-            axis, center_nm=center_nm, width_nm=width_nm, amplitude=intensity
-        )
-        source_type = "synthetic-gaussian"
-        source_description = f"Гаусс: λ₀={center_nm} нм, Δλ={width_nm} нм"
-    else:
-        if uploaded_file is None:
-            st.error("Загрузите CSV/TXT со спектром!")
-            st.stop()
-        csv_wavelengths, csv_values = _parse_uploaded_spectrum(uploaded_file)
-        source_spectrum = np.interp(
-            axis.wavelengths_nm,
-            csv_wavelengths,
-            csv_values,
-            left=csv_values[0],
-            right=csv_values[-1],
-        ).tolist()
-        source_spectrum = normalize_vector(source_spectrum)
-        source_type = "uploaded-csv"
-        source_description = f"Загруженный спектр ({uploaded_file.name})"
-
-    # ─── ГЕОМЕТРИЧЕСКОЕ ОСЛАБЛЕНИЕ ──────────────────────────
-    dx = rx - src_x
-    dy = ry - src_y
-    dz = rz - src_z
-    distance = max(np.sqrt(dx * dx + dy * dy + dz * dz), 1.0)  # мм
-    distance_m = distance / 1000.0
-    attenuation_distance = 1.0 / (distance_m * distance_m + 1e-6)
-    angle_rad = np.arccos(abs(dz) / distance) if distance > 0 else 0
-    attenuation_angle = max(0.0, np.cos(angle_rad))
-    total_attenuation = attenuation_distance * attenuation_angle
-
-    # Применяем ослабление к интенсивности источника
-    effective_intensity = intensity * total_attenuation
-    # Применяем ослабление к спектру
-    source_spectrum = [s * total_attenuation for s in source_spectrum]
-    # ────────────────────────────────────────────────────────
-
-    source = SourceConfig(
-        spectrum=source_spectrum,
-        position=[src_x, src_y, src_z],
+def _normalize_2d(arr_2d: list[list[float]]) -> np.ndarray:
+    """Нормализует 2D float-массив в 0..255 для отображения."""
+    flat = [v for row in arr_2d for v in row]
+    min_v, max_v = min(flat), max(flat)
+    if max_v == min_v:
+        return np.zeros((len(arr_2d), len(arr_2d[0])), dtype=np.uint8)
+    return np.array(
+        [[int(255 * (v - min_v) / (max_v - min_v)) for v in row] for row in arr_2d],
+        dtype=np.uint8,
     )
 
-    # # 3. Объект / сцена
-    # reflectance_map = build_default_reflectance_map(
-    #     height=height, width=width, axis=axis
-    # )
-    # obj = ObjectConfig(
-    #     object_name="test-target",
-    #     height=height,
-    #     width=width,
-    #     reflectance_map=reflectance_map,
-    #     description="Интерактивная сцена",
-    # )
-    # scene_data = simulate_scene_matrix(axis, source_spectrum, reflectance_map)
-    # scene = SpectralImage(
-    #     data=scene_data,
-    #     spectral_axis=axis,
-    #     description="Спектральная карта сцены",
-    # )
 
-    # 3. Объект / сцена с пятном, зависящим от геометрии
-    # 3. Объект / сцена с пятном, зависящим от геометрии
-    scene_data = []
-    for y in range(height):
-        row = []
-        for x in range(width):
-            # Нормализованные координаты [-1..1]
-            nx = (2 * x - width) / width
-            ny = (2 * y - height) / height
+def run_pipeline():
+    """Собирает весь пайплайн с текущими параметрами sidebar."""
 
-            # Смещение пятна в зависимости от положения источника
-            spot_x = nx - src_x / 500
-            spot_y = ny - src_y / 500
-
-            # Интенсивность пятна (убывает от центра)
-            distance_from_center = np.sqrt(spot_x ** 2 + spot_y ** 2)
-            spot_intensity = max(0, 1 - distance_from_center)
-
-            # Заполняем спектр
-            pixel = [spot_intensity * s for s in source_spectrum]
-            row.append(pixel)
-        scene_data.append(row)
-
-    scene = SpectralImage(
-        data=scene_data,
-        spectral_axis=axis,
-        description="Сцена с пятном, зависящим от геометрии",
+    # 1. Спектральная ось (по длине reflectance)
+    axis = build_axis_by_step(
+        start=380.0,
+        step=10.0,
+        count=len(reflectance),
     )
 
-    # 4. Оптика
+    # 2. Сцена и источник
+    scene_input = SceneSourceInput(
+        radiation=[1.0] * len(reflectance),
+        source_xyz=[float(src_x), float(src_y), float(src_z)],
+        reflectance=reflectance,
+        object_width=obj_width,
+        object_height=obj_height,
+        point_size=point_size,
+    )
+    scene_source = build_scene_source(scene_input)
+
+    # 3. Оптика
     optics_config = OpticsConfig(
-        channel_count=2,
-        split_strategy="low-high spectral split",
-        mask_pattern="checkerboard amplitude mask",
-        transmission_low=transmission_low,
-        transmission_high=transmission_high,
-        recombination_mode="sum",
-        description="Интерактивная оптика",
+        channel_count=3,
+        split_strategy="rgb spectral split",
+        mask_pattern="none",
+        transmission=[transmission_r, transmission_g, transmission_b],
+        recombination_mode="multi-channel",
+        rgb_ranges_nm=[(380, 480), (480, 600), (600, 730)],
+        description="Интерактивная RGB оптика",
     )
-    optical_data = split_optical_channels(scene_data, axis)
-    channels = [
-        OpticalChannel(
-            channel_id="low",
-            data=optical_data["channel_low"],
-            transmission=transmission_low,
-            mask_id=optics_config.mask_pattern,
-            prism_id="P1",
-            description="Коротковолновый канал",
-        ),
-        OpticalChannel(
-            channel_id="high",
-            data=optical_data["channel_high"],
-            transmission=transmission_high,
-            mask_id=optics_config.mask_pattern,
-            prism_id="P2",
-            description="Длинноволновый канал",
-        ),
-    ]
+    exposure = convert_scene_to_exposure(scene_source.scene, optics_config)
 
-    exposure = SensorExposure(
-        irradiance=optical_data["sensor_exposure"],
-        exposure_time_s=exposure_time_s,
-        spectral_axis=axis,
-        description="Экспозиция на сенсоре",
-    )
-
-    # 5. Сенсор
+    # 4. Сенсор
     sensor_config = SensorConfig(
-        resolution=(height, width),
+        resolution=(obj_height, obj_width),
         pixel_size_um=4.8,
         gain=gain,
         dark_offset=dark_offset,
-        quantum_efficiency=[1.0 for _ in axis.wavelengths_nm],
+        quantum_efficiency=[1.0 for _ in range(axis.bands_count)],
         description="Интерактивный сенсор",
     )
-    charge_map = integrate_sensor_charge(exposure.irradiance, gain, dark_offset)
-    charge = ChargeMatrix(
-        charge=charge_map,
-        sensor_config=sensor_config,
-        description="Накопленный заряд",
-    )
 
-    # 6. АЦП
+    # 5. АЦП
     adc_config = AdcConfig(
         bit_depth=bit_depth,
         full_scale=full_scale,
@@ -433,96 +322,121 @@ def run_pipeline(
         saturation_mode="clip",
         description="Интерактивный АЦП",
     )
-    frame_data = quantize_frame(charge_map, bit_depth, full_scale)
-    frame = DigitalFrame(
-        data=frame_data,
-        bit_depth=bit_depth,
-        description="Цифровой кадр",
-    )
 
-    # 7. Реконструкция и preview
-    preview = normalize_frame_to_u8(frame_data)
+    # 6. Формирование RGB-кадра
+    rgb_int = build_rgb_frame(exposure, sensor_config, adc_config)
+
+    # 7. Grayscale-заглушки для отчёта
+    grayscale_data = [[sum(pixel) // 3 for pixel in row] for row in rgb_int]
+    frame = DigitalFrame(
+        data=grayscale_data,
+        bit_depth=bit_depth,
+    )
+    charge = ChargeMatrix(
+        charge=[[float(v) for v in row] for row in grayscale_data],
+        sensor_config=sensor_config,
+    )
 
     artifacts = PipelineArtifacts(
         axis=axis,
-        source=source,
-        scene=scene,
+        source=scene_source.source,
+        scene=scene_source.scene,
         exposure=exposure,
         charge=charge,
         frame=frame,
-        export=None,  # type: ignore[arg-type]
-        optical_channels=channels,
-        description="Интерактивный прогон",
+        export=ExportConfig(output_dir="workspace/outputs"),
+        optical_channels=[
+            OpticalChannel(
+                channel_id="R",
+                data=[[p[0] for p in row] for row in exposure.channel_irradiance or []],
+                transmission=transmission_r,
+            ),
+            OpticalChannel(
+                channel_id="G",
+                data=[[p[1] for p in row] for row in exposure.channel_irradiance or []],
+                transmission=transmission_g,
+            ),
+            OpticalChannel(
+                channel_id="B",
+                data=[[p[2] for p in row] for row in exposure.channel_irradiance or []],
+                transmission=transmission_b,
+            ),
+        ],
     )
 
-    return (
-        artifacts,
-        np.array(preview, dtype=np.uint8),
-        np.array(optical_data["channel_low"]),
-        np.array(optical_data["channel_high"]),
-        np.array(exposure.irradiance),
-        np.array(charge_map),
-        source_spectrum,
-    )
+    return artifacts, rgb_int, exposure, sensor_config, adc_config
 
 
 if run:
     with st.spinner("Симуляция запущена…"):
-        (
-            artifacts,
-            preview_img,
-            ch_low,
-            ch_high,
-            exposure_arr,
-            charge_arr,
-            source_spectrum,
-        ) = run_pipeline(
-            src_x, src_y, src_z,
-            rx, ry, rz,
-        )
+        artifacts, rgb_int, exposure, sensor_config, adc_config = run_pipeline()
 
-    # ── Результаты ──
+        if auto_normalize:
+            image = normalize_rgb_to_u8(rgb_int)
+        else:
+            max_code = (1 << adc_config.bit_depth) - 1
+            image = [
+                [
+                    [max(0, min(255, int(v * 255 / max_code))) for v in pixel]
+                    for pixel in row
+                ]
+                for row in rgb_int
+            ]
+        image_np = np.array(image, dtype=np.uint8)
+
     st.success("Симуляция завершена!")
 
     col_left, col_right = st.columns([2, 1])
 
     with col_left:
-        st.subheader("🖼️ Итоговое изображение")
-        st.image(preview_img, use_container_width=True)
+        st.subheader("️ Итоговое RGB-изображение")
+        if auto_normalize:
+            st.caption("Режим: автонормализация (min-max stretch + gamma)")
+        else:
+            st.caption("Режим: физические значения АЦП (без растягивания)")
+        st.image(image_np, use_container_width=True)
 
-        # Промежуточные карты
-        tabs = st.tabs(["Экспозиция", "Заряд", "Канал LOW", "Канал HIGH"])
+        tabs = st.tabs(["Канал R", "Канал G", "Канал B", "Заряд", "Кадр АЦП"])
 
-        def _to_img(arr):
-            return np.array(normalize_frame_to_u8(arr.tolist()), dtype=np.uint8)
+        exp = exposure.channel_irradiance
 
         with tabs[0]:
-            st.image(
-                _to_img(exposure_arr),
-                caption="Экспозиция на сенсоре",
-                use_container_width=True,
-            )
+            if exp:
+                st.image(
+                    _normalize_2d([[p[0] for p in row] for row in exp]),
+                    caption="Экспозиция R",
+                    use_container_width=True,
+                )
         with tabs[1]:
-            st.image(
-                _to_img(charge_arr),
-                caption="Накопленный заряд",
-                use_container_width=True,
-            )
+            if exp:
+                st.image(
+                    _normalize_2d([[p[1] for p in row] for row in exp]),
+                    caption="Экспозиция G",
+                    use_container_width=True,
+                )
         with tabs[2]:
+            if exp:
+                st.image(
+                    _normalize_2d([[p[2] for p in row] for row in exp]),
+                    caption="Экспозиция B",
+                    use_container_width=True,
+                )
+        with tabs[3]:
+            charge_img = normalize_frame_to_u8(artifacts.frame.data)
             st.image(
-                _to_img(ch_low),
-                caption="Коротковолновый канал",
+                np.array(charge_img, dtype=np.uint8),
+                caption="Усреднённый заряд (grayscale)",
                 use_container_width=True,
             )
-        with tabs[3]:
+        with tabs[4]:
             st.image(
-                _to_img(ch_high),
-                caption="Длинноволновый канал",
+                np.array(normalize_frame_to_u8(artifacts.frame.data), dtype=np.uint8),
+                caption="Цифровой кадр после АЦП",
                 use_container_width=True,
             )
 
     with col_right:
-        st.subheader("📊 Статистика")
+        st.subheader(" Статистика")
 
         frame_stats = calculate_image_statistics(
             artifacts.frame.data, artifacts.frame.bit_depth
@@ -548,36 +462,25 @@ if run:
         if not range_check["is_valid"]:
             st.error("Значения выходят за допустимый диапазон АЦП!")
         if not clip_check["is_acceptable"]:
-            st.warning("Значительный клиппинг — уменьшите gain или интенсивность.")
-
-        with st.expander("Сырые данные верификации"):
-            st.json(
-                {
-                    "frame_stats": frame_stats,
-                    "range_check": range_check,
-                    "clip_check": clip_check,
-                }
-            )
+            st.warning("Значительный клиппинг — уменьшите gain или full_scale.")
 
     # ── Графики ──
     st.divider()
     g1, g2 = st.columns(2)
 
     with g1:
-        st.subheader("📈 Спектр источника")
+        st.subheader(" Спектр отражения (reflectance)")
         fig, ax = plt.subplots(figsize=(6, 3))
-        ax.plot(artifacts.axis.wavelengths_nm, source_spectrum, color="crimson", lw=2)
-        ax.fill_between(
-            artifacts.axis.wavelengths_nm, source_spectrum, alpha=0.2, color="crimson"
-        )
+        ax.plot(artifacts.axis.wave, reflectance, color="seagreen", lw=2)
+        ax.fill_between(artifacts.axis.wave, reflectance, alpha=0.2, color="seagreen")
         ax.set_xlabel("Длина волны, нм")
-        ax.set_ylabel("Относительная интенсивность")
-        ax.set_title("Спектр источника")
+        ax.set_ylabel("Коэффициент отражения [0..1]")
+        ax.set_title("Reflectance объекта")
         ax.grid(True, ls="--", alpha=0.4)
         st.pyplot(fig, use_container_width=True)
 
     with g2:
-        st.subheader("📊 Гистограмма кадра")
+        st.subheader(" Гистограмма кадра")
         fig2, ax2 = plt.subplots(figsize=(6, 3))
         flat_values = [v for row in artifacts.frame.data for v in row]
         ax2.hist(
@@ -594,33 +497,36 @@ if run:
 
     # ── Текстовый отчёт ──
     st.divider()
-    with st.expander("📝 Подробный текстовый отчёт"):
+    with st.expander(" Подробный текстовый отчёт"):
         report_lines = [
             "=" * 60,
-            "ОТЧЁТ ПО РАБОТЕ ИНТЕРАКТИВНОЙ СИМУЛЯЦИИ",
+            "ОТЧЁТ ПО ИНТЕРАКТИВНОЙ СИМУЛЯЦИИ",
             "=" * 60,
             "",
             "--- ОСНОВНАЯ ИНФОРМАЦИЯ ---",
             f"Спектральных диапазонов: {artifacts.axis.bands_count}",
             f"Оптические каналы: {[ch.channel_id for ch in artifacts.optical_channels]}",
-             f"Размер сцены: {len(artifacts.scene.data)}×{len(artifacts.scene.data[0])}",
+            f"Размер сцены: {len(artifacts.scene.data)}×{len(artifacts.scene.data[0])}",
             "",
-            "--- ПАРАМЕТРЫ СЕНСОРА ---",
+            "--- ПАРАМЕТРЫ ---",
+            f"Источник: {artifacts.source.position}",
             f"Gain: {artifacts.charge.sensor_config.gain}",
             f"Dark offset: {artifacts.charge.sensor_config.dark_offset}",
-            f"Экспозиция: {summarize_matrix(artifacts.exposure.irradiance)}",
+            f"Full scale: {adc_config.full_scale}",
+            f"Bit depth: {adc_config.bit_depth}",
+            "",
+            "--- ПРОМЕЖУТОЧНЫЕ ДАННЫЕ ---",
+            f"Экспозиция: {len(artifacts.exposure.channel_irradiance or [])}x{len((artifacts.exposure.channel_irradiance or [[]])[0])}x3",
             f"Заряд: {summarize_matrix(artifacts.charge.charge)}",
             "",
             "--- ЦИФРОВОЙ КАДР ---",
             f"Размер: {frame_stats['height']}x{frame_stats['width']}",
             f"Битность: {frame_stats['bit_depth']} бит",
-            f"Диапазон значений: {frame_stats['dynamic_range']}",
-            f"Среднее значение: {frame_stats['mean']}",
+            f"Диапазон: {frame_stats['dynamic_range']}",
+            f"Среднее: {frame_stats['mean']}",
             "",
             "--- ВЕРИФИКАЦИЯ ---",
             f"Диапазон корректен: {range_check['is_valid']}",
-            f"Клиппинг (макс): {clip_check['clipped_high']} пикс. ({clip_check['clipped_high_percent']}%)",
-            f"Клиппинг (мин): {clip_check['clipped_low']} пикс. ({clip_check['clipped_low_percent']}%)",
             f"Клиппинг допустим: {clip_check['is_acceptable']}",
             "",
             "=" * 60,
@@ -630,5 +536,5 @@ if run:
 else:
     st.info(
         "Настройте параметры в боковой панели и нажмите **▶ Запустить симуляцию**.",
-        icon="👈",
+        icon="",
     )
