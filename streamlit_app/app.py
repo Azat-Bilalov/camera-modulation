@@ -68,7 +68,6 @@ st.set_page_config(
 )
 
 st.title(" Симуляция камеры: спектральный пайплайн")
-st.caption("Все расчёты — через `workspace/`. Исходные модули проекта не изменены.")
 
 
 # ──────────────────────────────────────────────────────────────
@@ -82,6 +81,9 @@ with st.sidebar:
         src_x = st.slider("X источника", -500, 500, 10, 10)
         src_y = st.slider("Y источника", -500, 500, 10, 10)
         src_z = st.slider("Z источника (высота)", 1, 1000, 50, 10)
+        source_power = st.slider("Мощность источника, Вт", 0.1, 100.0, 1.0, 0.1)
+        source_tilt_deg = st.slider("Наклон источника, °", 0.0, 89.0, 0.0, 1.0)
+        source_file = st.file_uploader("CSV источника (колонка `value`)", type=["csv"])
 
         st.markdown("** Объект (плоскость)**")
         obj_width = st.slider("Ширина, px", 4, 128, 32, 4)
@@ -91,7 +93,7 @@ with st.sidebar:
         st.markdown("** Отражение (reflectance)**")
         reflectance_file = st.file_uploader("CSV со спектром (колонка `value`)", type=["csv"])
         if reflectance_file is None:
-            default_csv = Path(__file__).parent / "sample_spectrum.csv"
+            default_csv = PROJECT_ROOT / "workspace" / "input" / "sample_spectrum.csv"
             reflectance_values = read_spectrum_from_csv(str(default_csv))
         else:
             df = pd.read_csv(io.BytesIO(reflectance_file.getvalue()))
@@ -102,6 +104,18 @@ with st.sidebar:
 
         max_val = max(reflectance_values)
         reflectance = [v / max_val for v in reflectance_values]
+
+        if source_file is None:
+            radiation = [1.0] * len(reflectance)
+        else:
+            source_df = pd.read_csv(io.BytesIO(source_file.getvalue()))
+            if "value" not in source_df.columns:
+                st.error("В CSV источника отсутствует колонка `value`!")
+                st.stop()
+            radiation = source_df["value"].astype(float).tolist()
+            if len(radiation) != len(reflectance):
+                st.error("Длины спектров источника и отражения должны совпадать.")
+                st.stop()
 
     with st.expander(" Оптический тракт (RGB)", expanded=False):
         transmission_r = st.slider("Пропускание R", 0.0, 1.0, 0.95, 0.01)
@@ -126,6 +140,10 @@ with st.sidebar:
 
     # Чекбокс для показа 3D-сцены
     show_3d = st.checkbox(" Показать 3D-сцену", key="show_3d_scene")
+
+    # Параметры плоскости для интерактивной 3D-визуализации
+    plane_tilt_deg = st.slider("Наклон плоскости, °", -45.0, 45.0, 0.0, 1.0)
+    plane_rot_deg = st.slider("Поворот плоскости вокруг Z, °", 0.0, 360.0, 0.0, 1.0)
 
     run = st.button("▶ Запустить симуляцию", use_container_width=True)
 
@@ -172,10 +190,35 @@ if show_3d:
         )
     )
 
-    # Плоскость объекта (полупрозрачная сетка)
-    corners_x = [0, plane_w, plane_w, 0]
-    corners_y = [0, 0, plane_h, plane_h]
-    corners_z = [plane_z, plane_z, plane_z, plane_z]
+    # Плоскость объекта (полупрозрачная сетка) с учётом наклона и поворота
+    half_w = plane_w / 2.0
+    half_h = plane_h / 2.0
+
+    # локальные координаты углов плоскости относительно центра
+    local_corners = np.array(
+        [
+            [-half_w, -half_h, 0.0],
+            [half_w, -half_h, 0.0],
+            [half_w, half_h, 0.0],
+            [-half_w, half_h, 0.0],
+        ]
+    )
+
+    # преобразования: наклон вокруг локальной оси X и поворот вокруг глобальной Z
+    th = np.radians(plane_tilt_deg)
+    rz = np.radians(plane_rot_deg)
+
+    Rx = np.array([[1, 0, 0], [0, np.cos(th), -np.sin(th)], [0, np.sin(th), np.cos(th)]])
+    Rz = np.array([[np.cos(rz), -np.sin(rz), 0], [np.sin(rz), np.cos(rz), 0], [0, 0, 1]])
+
+    # применяем сначала наклон, затем поворот
+    transformed = (Rz @ (Rx @ local_corners.T)).T
+
+    # переносим в мировые координаты (центр плоскости в (cx, cy, plane_z))
+    corners_world = transformed + np.array([cx, cy, plane_z])
+    corners_x = corners_world[:, 0].tolist()
+    corners_y = corners_world[:, 1].tolist()
+    corners_z = corners_world[:, 2].tolist()
 
     fig.add_trace(
         go.Mesh3d(
@@ -220,10 +263,105 @@ if show_3d:
             )
         )
 
+    # Нормаль плоскости (из двух соседних ребер)
+    v1 = corners_world[1] - corners_world[0]
+    v2 = corners_world[2] - corners_world[1]
+    normal = np.cross(v1, v2)
+    n_norm = np.linalg.norm(normal)
+    if n_norm > 0:
+        normal_unit = normal / n_norm
+    else:
+        normal_unit = np.array([0.0, 0.0, 1.0])
+
+    # Центр плоскости в мировых координатах
+    center_world = np.array([cx, cy, plane_z])
+
+    # Вектор от источника к центру плоскости
+    src_vec = center_world - np.array([src_x, src_y, src_z])
+    src_dist = np.linalg.norm(src_vec)
+    if src_dist > 0:
+        src_unit = src_vec / src_dist
+    else:
+        src_unit = np.array([0.0, 0.0, 1.0])
+
+    # Угол падения между нормалью и направлением от центра сцены
+    angle_to_center = np.degrees(
+        np.arccos(np.clip(np.abs(np.dot(normal_unit, src_unit)), -1.0, 1.0))
+    )
+
+    # Вычисление ориентации источника по заданному наклону (tilt) — направлено в сторону центра по азимуту
+    th_src = np.radians(source_tilt_deg)
+    hx = cx - src_x
+    hy = cy - src_y
+    hnorm = np.hypot(hx, hy)
+    if hnorm > 1e-6:
+        ux = hx / hnorm
+        uy = hy / hnorm
+    else:
+        ux, uy = 1.0, 0.0
+
+    # Направление, смотрящее вниз под углом th_src к вертикали, в сторону центра
+    src_dir = np.array([ux * np.sin(th_src), uy * np.sin(th_src), -np.cos(th_src)])
+    src_dir_unit = src_dir / np.linalg.norm(src_dir)
+
+    # Угол между нормалью плоскости и направлением источника
+    angle_source = np.degrees(
+        np.arccos(np.clip(np.abs(np.dot(normal_unit, src_dir_unit)), -1.0, 1.0))
+    )
+
+    # Отрисовка нормали (стрелка) и вектора от источника
+    arrow_scale = max(plane_w, plane_h, 100) * 0.25
+    n_end = center_world + normal_unit * arrow_scale
+    fig.add_trace(
+        go.Scatter3d(
+            x=[center_world[0], n_end[0]],
+            y=[center_world[1], n_end[1]],
+            z=[center_world[2], n_end[2]],
+            mode="lines+markers",
+            line=dict(color="#0000FF", width=4),
+            marker=dict(size=2, color="#0000FF"),
+            name=" Нормаль",
+            hoverinfo="skip",
+        )
+    )
+
+    # Вектор от источника к центру
+    fig.add_trace(
+        go.Scatter3d(
+            x=[src_x, center_world[0]],
+            y=[src_y, center_world[1]],
+            z=[src_z, center_world[2]],
+            mode="lines",
+            line=dict(color="#00AA00", width=3, dash="dashdot"),
+            name=" Вектор источника",
+            hoverinfo="skip",
+        )
+    )
+
+    # Визуализация ориентации источника (по заданному наклону)
+    s_end = np.array([src_x, src_y, src_z]) + src_dir_unit * arrow_scale
+    fig.add_trace(
+        go.Scatter3d(
+            x=[src_x, s_end[0]],
+            y=[src_y, s_end[1]],
+            z=[src_z, s_end[2]],
+            mode="lines+markers",
+            line=dict(color="#FF00FF", width=4),
+            marker=dict(size=2, color="#FF00FF"),
+            name=" Ориентация источника",
+            hoverinfo="skip",
+        )
+    )
+
     size = max(abs(src_x), abs(src_y), abs(src_z), plane_w, plane_h, 100)
     fig.update_layout(
         title=dict(
-            text=f" Расстояние до центра: {distance:.0f} |  Угол: {angle:.1f}°",
+            text=(
+                f" Расстояние до центра: {distance:.0f} | "
+                f"Угол (центр→норма): {angle_to_center:.1f}° | "
+                f"Наклон источника: {source_tilt_deg:.1f}° | "
+                f"Угол падения: {angle_source:.1f}°"
+            ),
             font=dict(size=14, color="#2C3E50"),
             x=0.5,
         ),
@@ -280,12 +418,14 @@ def run_pipeline():
 
     # 2. Сцена и источник
     scene_input = SceneSourceInput(
-        radiation=[1.0] * len(reflectance),
+        radiation=radiation,
         source_xyz=[float(src_x), float(src_y), float(src_z)],
         reflectance=reflectance,
         object_width=obj_width,
         object_height=obj_height,
         point_size=point_size,
+        power=source_power,
+        tilt_deg=source_tilt_deg,
     )
     scene_source = build_scene_source(scene_input)
 
@@ -468,6 +608,19 @@ if run:
         st.pyplot(fig, use_container_width=True)
 
     with g2:
+        st.subheader(" Спектр источника")
+        fig2, ax2 = plt.subplots(figsize=(6, 3))
+        ax2.plot(artifacts.axis.wave, radiation, color="darkorange", lw=2)
+        ax2.fill_between(artifacts.axis.wave, radiation, alpha=0.2, color="orange")
+        ax2.set_xlabel("Длина волны, нм")
+        ax2.set_ylabel("Излучение, Вт/м²/нм")
+        ax2.set_title("Спектр источника")
+        ax2.grid(True, ls="--", alpha=0.4)
+        st.pyplot(fig2, use_container_width=True)
+
+    g3, g4 = st.columns(2)
+
+    with g3:
         st.subheader(" Гистограмма кадра")
         fig2, ax2 = plt.subplots(figsize=(6, 3))
         flat_values = [v for row in artifacts.frame.data for v in row]
@@ -482,6 +635,12 @@ if run:
         ax2.set_title("Распределение яркости")
         ax2.grid(True, ls="--", alpha=0.4)
         st.pyplot(fig2, use_container_width=True)
+
+    with g4:
+        st.subheader(" Параметры источника")
+        st.metric("Мощность", f"{source_power:.1f} Вт")
+        st.metric("Наклон", f"{source_tilt_deg:.1f}°")
+        st.metric("Размер спектра", f"{len(radiation)} точек")
 
     # ── Текстовый отчёт ──
     st.divider()
