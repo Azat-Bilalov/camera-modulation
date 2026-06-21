@@ -122,6 +122,15 @@ with st.sidebar:
         transmission_g = st.slider("Пропускание G", 0.0, 1.0, 0.90, 0.01)
         transmission_b = st.slider("Пропускание B", 0.0, 1.0, 0.85, 0.01)
 
+        st.markdown("** Камера-обскура (диафрагма)**")
+        aperture_diameter = st.slider("Диаметр диафрагмы", 1.0, 200.0, 50.0, 1.0)
+        object_distance = st.slider("Расстояние объект → диафрагма", 1.0, 500.0, 50.0, 1.0)
+        image_distance = st.slider("Расстояние диафрагма → изображение", 1.0, 500.0, 50.0, 1.0)
+        aperture_offset_x = st.slider("Смещение диафрагмы по X", -100.0, 100.0, 0.0, 1.0)
+        aperture_offset_y = st.slider("Смещение диафрагмы по Y", -100.0, 100.0, 0.0, 1.0)
+        tilt_x_deg = st.slider("Наклон оптической оси по X, °", -60.0, 60.0, 0.0, 1.0)
+        tilt_y_deg = st.slider("Наклон оптической оси по Y, °", -60.0, 60.0, 0.0, 1.0)
+
     with st.expander(" Сенсор", expanded=False):
         gain = st.slider("Gain", 100.0, 50000.0, 2000.0, 100.0)
         dark_offset = st.slider("Dark offset", 0.0, 1.0, 0.002, 0.001)
@@ -432,12 +441,19 @@ def run_pipeline():
     # 3. Оптика
     optics_config = OpticsConfig(
         channel_count=3,
-        split_strategy="rgb spectral split",
-        mask_pattern="none",
+        split_strategy="pinhole projection (camera obscura)",
+        mask_pattern="single circular aperture",
         transmission=[transmission_r, transmission_g, transmission_b],
         recombination_mode="multi-channel",
         rgb_ranges_nm=[(380, 480), (480, 600), (600, 730)],
-        description="Интерактивная RGB оптика",
+        aperture_diameter=aperture_diameter,
+        object_distance=object_distance,
+        image_distance=image_distance,
+        aperture_offset_x=aperture_offset_x,
+        aperture_offset_y=aperture_offset_y,
+        tilt_x_deg=tilt_x_deg,
+        tilt_y_deg=tilt_y_deg,
+        description="Интерактивная камера-обскура",
     )
     exposure = convert_scene_to_exposure(scene_source.scene, optics_config)
 

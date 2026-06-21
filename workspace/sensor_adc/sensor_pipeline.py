@@ -50,6 +50,12 @@ def build_rgb_frame(
     Преобразует 3-канальную экспозицию (H, W, 3) в 3-канальный цифровой кадр.
 
     Каждый канал проходит усиление и АЦП независимо (без Bayer CFA).
+
+    TODO(sensor_adc): диафрагма в `optics_transformer.py` ахроматична и больше
+    не разбивает спектр на R/G/B — `exposure.channel_irradiance` теперь имеет
+    форму (H, W, bands), а не (H, W, 3). Разбиение на каналы (по диапазонам
+    длин волн / спектральной чувствительности, с учётом `OpticsConfig.transmission`
+    и `rgb_ranges_nm`) нужно перенести сюда, перед накоплением заряда.
     """
     channel_irradiance = exposure.channel_irradiance
     if channel_irradiance is None:

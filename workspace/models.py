@@ -45,6 +45,15 @@ class OpticsConfig:
     transmission: list[float]  # [R, G, B]
     recombination_mode: str = "sum"
     rgb_ranges_nm: list[tuple[float, float]] | None = None
+    # Геометрия камеры-обскуры (в тех же условных единицах, что point_size сцены).
+    aperture_diameter: float = 50.0  # диаметр точечной диафрагмы
+    object_distance: float = 50.0  # расстояние от плоскости объекта до диафрагмы (глубина по оси Z)
+    image_distance: float = 50.0  # расстояние от диафрагмы до плоскости изображения
+    # Произвольное положение и наклон диафрагмы/сенсора относительно центра сцены.
+    aperture_offset_x: float = 0.0  # смещение диафрагмы по X относительно центра сцены
+    aperture_offset_y: float = 0.0  # смещение диафрагмы по Y относительно центра сцены
+    tilt_x_deg: float = 0.0  # наклон оптической оси вокруг X (градусы)
+    tilt_y_deg: float = 0.0  # наклон оптической оси вокруг Y (градусы)
     description: str = "..."
 
 
