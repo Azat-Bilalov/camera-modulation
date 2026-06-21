@@ -58,7 +58,7 @@ def main() -> None:
     parser.add_argument(
         "--spectrum",
         type=Path,
-        default=Path(__file__).resolve().parent / "input" / "sample_spectrum.csv",
+        default=Path(__file__).resolve().parent / "input" / "scarlet_spectrum.csv",
         help="Путь к CSV-файлу со спектром (колонка 'value').",
     )
     args = parser.parse_args()

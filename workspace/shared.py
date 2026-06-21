@@ -98,11 +98,14 @@ def save_grayscale_bmp(image: list[list[int]], path: Path) -> None:
 def normalize_rgb_to_u8(image: list[list[list[int]]], gamma: float = 0.4) -> list[list[list[int]]]:
     """
     Нормализует RGB-кадр в диапазон 0..255 единым масштабом по всем каналам,
-    чтобы не разрушить цветовой баланс, с опциональной гамма-коррекцией.
+    с гамма-коррекцией, сохраняющей оттенок (hue-preserving tone mapping).
 
-    Вместо min-max stretching используется деление на глобальный максимум
-    (без вычитания минимума). Это сохраняет хроматичность даже в ярких
-    пикселях после геометрического затухания 1/r².
+    Вместо деления на глобальный максимум и поканальной гамма-коррекции
+    (которая нелинейно тянет каналы к серому и обесцвечивает картинку, превращая
+    красный в оранжевый) гамма применяется только к яркости пикселя — каналу
+    «значения» V = max(R, G, B). Все три канала масштабируются одним и тем же
+    множителем, поэтому соотношение R:G:B (цветовой тон и насыщенность) не
+    меняется — поднимается лишь яркость тёмных областей после затухания 1/r².
     """
 
     flat = [value for row in image for pixel in row for value in pixel]
@@ -114,10 +117,15 @@ def normalize_rgb_to_u8(image: list[list[list[int]]], gamma: float = 0.4) -> lis
     for row in image:
         result_row: list[list[int]] = []
         for pixel in row:
-            # Масштабирование относительно глобального максимума
-            normed = [value / maximum for value in pixel]
-            # Гамма-коррекция (одинаковая для всех каналов — сохраняет оттенок)
-            corrected = [max(0, min(255, int(round((v**gamma) * 255.0)))) for v in normed]
+            # Нормированная яркость пикселя (по самому яркому каналу).
+            value = max(pixel) / maximum
+            if value <= 0:
+                result_row.append([0, 0, 0])
+                continue
+            # Гамма применяется к яркости; множитель — общий для всех каналов,
+            # поэтому оттенок и насыщенность сохраняются (без обесцвечивания).
+            scale = (value**gamma) / value
+            corrected = [max(0, min(255, int(round((v / maximum) * scale * 255.0)))) for v in pixel]
             result_row.append(corrected)
         result.append(result_row)
     return result

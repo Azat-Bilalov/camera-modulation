@@ -67,17 +67,17 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title(" Симуляция камеры: спектральный пайплайн")
+st.title("Симуляция камеры: спектральный пайплайн")
 
 
 # ──────────────────────────────────────────────────────────────
 # Боковая панель — параметры симуляции
 # ──────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.header("️ Конфигурация пайплайна")
+    st.header("Конфигурация пайплайна")
 
     with st.expander(" Сцена и источник", expanded=True):
-        st.markdown("** Источник света**")
+        st.markdown("**Источник света**")
         src_x = st.slider("X источника", -500, 500, 10, 10)
         src_y = st.slider("Y источника", -500, 500, 10, 10)
         src_z = st.slider("Z источника (высота)", 1, 1000, 50, 10)
@@ -85,15 +85,15 @@ with st.sidebar:
         source_tilt_deg = st.slider("Наклон источника, °", 0.0, 89.0, 0.0, 1.0)
         source_file = st.file_uploader("CSV источника (колонка `value`)", type=["csv"])
 
-        st.markdown("** Объект (плоскость)**")
+        st.markdown("**Объект (плоскость)**")
         obj_width = st.slider("Ширина, px", 4, 128, 32, 4)
         obj_height = st.slider("Высота, px", 4, 128, 32, 4)
         point_size = st.slider("Размер точки (pixel_pitch)", 1.0, 50.0, 10.0, 1.0)
 
-        st.markdown("** Отражение (reflectance)**")
+        st.markdown("**Отражение (reflectance)**")
         reflectance_file = st.file_uploader("CSV со спектром (колонка `value`)", type=["csv"])
         if reflectance_file is None:
-            default_csv = PROJECT_ROOT / "workspace" / "input" / "sample_spectrum.csv"
+            default_csv = PROJECT_ROOT / "workspace" / "input" / "scarlet_spectrum.csv"
             reflectance_values = read_spectrum_from_csv(str(default_csv))
         else:
             df = pd.read_csv(io.BytesIO(reflectance_file.getvalue()))
@@ -122,7 +122,7 @@ with st.sidebar:
         transmission_g = st.slider("Пропускание G", 0.0, 1.0, 0.90, 0.01)
         transmission_b = st.slider("Пропускание B", 0.0, 1.0, 0.85, 0.01)
 
-        st.markdown("** Камера-обскура (диафрагма)**")
+        st.markdown("**Камера-обскура (диафрагма)**")
         aperture_diameter = st.slider("Диаметр диафрагмы", 1.0, 200.0, 50.0, 1.0)
         object_distance = st.slider("Расстояние объект → диафрагма", 1.0, 500.0, 50.0, 1.0)
         image_distance = st.slider("Расстояние диафрагма → изображение", 1.0, 500.0, 50.0, 1.0)
@@ -132,14 +132,17 @@ with st.sidebar:
         tilt_y_deg = st.slider("Наклон оптической оси по Y, °", -60.0, 60.0, 0.0, 1.0)
 
     with st.expander(" Сенсор", expanded=False):
-        gain = st.slider("Gain", 100.0, 50000.0, 2000.0, 100.0)
+        # Кривые чувствительности нормированы балансом белого (сумма каждой ≈ 1),
+        # поэтому усиление по умолчанию поднято до 24000 — иначе RAW-сигнал слишком
+        # слаб (max ~33/1023), синий канал схлопывается и цвета искажаются.
+        gain = st.slider("Gain", 100.0, 100000.0, 24000.0, 100.0)
         dark_offset = st.slider("Dark offset", 0.0, 1.0, 0.002, 0.001)
 
     with st.expander(" АЦП", expanded=False):
         bit_depth = st.slider("Разрядность, бит", 8, 16, 10, 1)
         full_scale = st.slider("Full scale", 1.0, 1000.0, 8.0, 1.0)
 
-    st.markdown("**️ Отображение**")
+    st.markdown("**Отображение**")
     auto_normalize = st.checkbox(
         "Автонормализация яркости (min-max stretch)",
         value=True,
@@ -161,7 +164,7 @@ with st.sidebar:
 # 3D-визуализация геометрии
 # ──────────────────────────────────────────────────────────────
 if show_3d:
-    st.subheader("️ 3D-визуализация геометрии")
+    st.subheader("3D-визуализация геометрии")
 
     # Размеры плоскости объекта
     plane_w = (obj_width - 1) * point_size
@@ -415,6 +418,17 @@ def _normalize_2d(arr_2d: list[list[float]]) -> np.ndarray:
     )
 
 
+def _colorize_channel(arr_2d: list[list[float]], channel_index: int) -> np.ndarray:
+    """
+    Нормализует одноканальную карту и раскрашивает её в собственный цвет
+    (0=R, 1=G, 2=B), чтобы канал отображался в своём цвете, а не в ЧБ.
+    """
+    gray = _normalize_2d(arr_2d)
+    rgb = np.zeros((*gray.shape, 3), dtype=np.uint8)
+    rgb[:, :, channel_index] = gray
+    return rgb
+
+
 def run_pipeline():
     """Собирает весь пайплайн с текущими параметрами sidebar."""
 
@@ -534,10 +548,19 @@ if run:
 
     st.success("Симуляция завершена!")
 
+    # Отображаем кадры без сглаживания: браузер по умолчанию растягивает
+    # маленькое изображение 32x32 билинейно (размытие). Принудительно включаем
+    # nearest-neighbor рендеринг — пиксели остаются чёткими, как в outputs/.
+    st.markdown(
+        "<style>[data-testid=\"stImage\"] img { image-rendering: pixelated; "
+        "image-rendering: crisp-edges; }</style>",
+        unsafe_allow_html=True,
+    )
+
     col_left, col_right = st.columns([2, 1])
 
     with col_left:
-        st.subheader("️ Итоговое RGB-изображение")
+        st.subheader("Итоговое RGB-изображение")
         if auto_normalize:
             st.caption("Режим: автонормализация (min-max stretch + gamma)")
         else:
@@ -546,29 +569,26 @@ if run:
 
         tabs = st.tabs(["Канал R", "Канал G", "Канал B", "Заряд", "Кадр АЦП"])
 
-        exp = exposure.channel_irradiance
-
+        # Разбиение по каналам берём из восстановленного (демозаикой) RGB-кадра
+        # и показываем каждый канал в его собственном цвете.
         with tabs[0]:
-            if exp:
-                st.image(
-                    _normalize_2d([[p[0] for p in row] for row in exp]),
-                    caption="Экспозиция R",
-                    use_container_width=True,
-                )
+            st.image(
+                _colorize_channel([[p[0] for p in row] for row in rgb_int], 0),
+                caption="Канал R (после демозаики)",
+                use_container_width=True,
+            )
         with tabs[1]:
-            if exp:
-                st.image(
-                    _normalize_2d([[p[1] for p in row] for row in exp]),
-                    caption="Экспозиция G",
-                    use_container_width=True,
-                )
+            st.image(
+                _colorize_channel([[p[1] for p in row] for row in rgb_int], 1),
+                caption="Канал G (после демозаики)",
+                use_container_width=True,
+            )
         with tabs[2]:
-            if exp:
-                st.image(
-                    _normalize_2d([[p[2] for p in row] for row in exp]),
-                    caption="Экспозиция B",
-                    use_container_width=True,
-                )
+            st.image(
+                _colorize_channel([[p[2] for p in row] for row in rgb_int], 2),
+                caption="Канал B (после демозаики)",
+                use_container_width=True,
+            )
         with tabs[3]:
             charge_img = normalize_frame_to_u8(artifacts.frame.data)
             st.image(
@@ -584,7 +604,7 @@ if run:
             )
 
     with col_right:
-        st.subheader(" Статистика")
+        st.subheader("Статистика")
 
         frame_stats = calculate_image_statistics(artifacts.frame.data, artifacts.frame.bit_depth)
         range_check = verify_digital_range(artifacts.frame.data, artifacts.frame.bit_depth)
@@ -613,7 +633,7 @@ if run:
     g1, g2 = st.columns(2)
 
     with g1:
-        st.subheader(" Спектр отражения (reflectance)")
+        st.subheader("Спектр отражения (reflectance)")
         fig, ax = plt.subplots(figsize=(6, 3))
         ax.plot(artifacts.axis.wave, reflectance, color="seagreen", lw=2)
         ax.fill_between(artifacts.axis.wave, reflectance, alpha=0.2, color="seagreen")
@@ -624,7 +644,7 @@ if run:
         st.pyplot(fig, use_container_width=True)
 
     with g2:
-        st.subheader(" Спектр источника")
+        st.subheader("Спектр источника")
         fig2, ax2 = plt.subplots(figsize=(6, 3))
         ax2.plot(artifacts.axis.wave, radiation, color="darkorange", lw=2)
         ax2.fill_between(artifacts.axis.wave, radiation, alpha=0.2, color="orange")
@@ -637,7 +657,7 @@ if run:
     g3, g4 = st.columns(2)
 
     with g3:
-        st.subheader(" Гистограмма кадра")
+        st.subheader("Гистограмма кадра")
         fig2, ax2 = plt.subplots(figsize=(6, 3))
         flat_values = [v for row in artifacts.frame.data for v in row]
         ax2.hist(
@@ -653,7 +673,7 @@ if run:
         st.pyplot(fig2, use_container_width=True)
 
     with g4:
-        st.subheader(" Параметры источника")
+        st.subheader("Параметры источника")
         st.metric("Мощность", f"{source_power:.1f} Вт")
         st.metric("Наклон", f"{source_tilt_deg:.1f}°")
         st.metric("Размер спектра", f"{len(radiation)} точек")

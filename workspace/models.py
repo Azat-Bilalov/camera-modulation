@@ -58,6 +58,25 @@ class OpticsConfig:
 
 
 @dataclass
+class SpectralSensitivity:
+    """
+    Спектральная чувствительность регистрирующего элемента (фотодиода под
+    цветными фильтрами Байера). Для каждой длины волны из `wave` заданы
+    относительные отклики красного, зелёного и синего каналов (0..1).
+    """
+
+    wave: list[float]
+    red: list[float]
+    green: list[float]
+    blue: list[float]
+    description: str = "Кривые спектральной чувствительности R/G/B регистрирующего элемента"
+
+    def as_matrix(self) -> list[list[float]]:
+        """Возвращает чувствительность в виде [band][channel] (R, G, B)."""
+        return [[self.red[i], self.green[i], self.blue[i]] for i in range(len(self.wave))]
+
+
+@dataclass
 class SensorExposure:
     spectral_axis: SpectralAxis
     channel_irradiance: list[list[list[float]]] | None = None  # (H, W, 3)
@@ -173,4 +192,5 @@ __all__ = [
     "SourceConfig",
     "SpectralAxis",
     "SpectralImage",
+    "SpectralSensitivity",
 ]
