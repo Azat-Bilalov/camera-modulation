@@ -620,8 +620,6 @@ if run:
 
         if not range_check["is_valid"]:
             st.error("Значения выходят за допустимый диапазон АЦП!")
-        if not clip_check["is_acceptable"]:
-            st.warning("Значительный клиппинг — уменьшите gain или full_scale.")
 
     # ── Графики ──
     st.divider()

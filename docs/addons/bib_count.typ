@@ -1,1 +1,0 @@
-#let bib-count = state("citation-counter", ())
