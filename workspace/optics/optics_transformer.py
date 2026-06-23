@@ -179,9 +179,7 @@ def project_scene_through_pinhole(
     )
     cam_axis, cam_right, cam_up = _camera_basis(optics_config.tilt_x_deg, optics_config.tilt_y_deg)
 
-    sensor_exposure: list[list[list[float]]] = [
-        [[0.0] * bands_count for _ in range(width)] for _ in range(height)
-    ]
+    sensor_exposure: list[list[list[float]]] = [[[0.0] * bands_count for _ in range(width)] for _ in range(height)]
 
     for y in range(height):
         for x in range(width):

@@ -78,17 +78,17 @@ with st.sidebar:
 
     with st.expander(" Сцена и источник", expanded=True):
         st.markdown("**Источник света**")
-        src_x = st.slider("X источника", -500, 500, 10, 10)
-        src_y = st.slider("Y источника", -500, 500, 10, 10)
-        src_z = st.slider("Z источника (высота)", 1, 1000, 50, 10)
+        src_x = st.slider("X источника, см", -500, 500, 10, 10)
+        src_y = st.slider("Y источника, см", -500, 500, 10, 10)
+        src_z = st.slider("Z источника (высота), см", 1, 1000, 50, 10)
         source_power = st.slider("Мощность источника, Вт", 0.1, 100.0, 1.0, 0.1)
         source_tilt_deg = st.slider("Наклон источника, °", 0.0, 89.0, 0.0, 1.0)
         source_file = st.file_uploader("CSV источника (колонка `value`)", type=["csv"])
 
         st.markdown("**Объект (плоскость)**")
-        obj_width = st.slider("Ширина, px", 4, 128, 32, 4)
-        obj_height = st.slider("Высота, px", 4, 128, 32, 4)
-        point_size = st.slider("Размер точки (pixel_pitch)", 1.0, 50.0, 10.0, 1.0)
+        obj_width = st.slider("Ширина, у.е.", 4, 128, 32, 4)
+        obj_height = st.slider("Высота, у.е.", 4, 128, 32, 4)
+        point_size = st.slider("Размер точки (pixel_pitch), см", 1.0, 50.0, 10.0, 1.0)
 
         st.markdown("**Отражение (reflectance)**")
         reflectance_file = st.file_uploader("CSV со спектром (колонка `value`)", type=["csv"])
@@ -123,11 +123,11 @@ with st.sidebar:
         transmission_b = st.slider("Пропускание B", 0.0, 1.0, 0.85, 0.01)
 
         st.markdown("**Камера-обскура (диафрагма)**")
-        aperture_diameter = st.slider("Диаметр диафрагмы", 1.0, 200.0, 50.0, 1.0)
-        object_distance = st.slider("Расстояние объект → диафрагма", 1.0, 500.0, 50.0, 1.0)
-        image_distance = st.slider("Расстояние диафрагма → изображение", 1.0, 500.0, 50.0, 1.0)
-        aperture_offset_x = st.slider("Смещение диафрагмы по X", -100.0, 100.0, 0.0, 1.0)
-        aperture_offset_y = st.slider("Смещение диафрагмы по Y", -100.0, 100.0, 0.0, 1.0)
+        aperture_diameter = st.slider("Диаметр диафрагмы, мм", 1.0, 200.0, 50.0, 1.0)
+        object_distance = st.slider("Расстояние объект → диафрагма, см", 1.0, 500.0, 50.0, 1.0)
+        image_distance = st.slider("Расстояние диафрагма → изображение, см", 1.0, 500.0, 50.0, 1.0)
+        aperture_offset_x = st.slider("Смещение диафрагмы по X, см", -100.0, 100.0, 0.0, 1.0)
+        aperture_offset_y = st.slider("Смещение диафрагмы по Y, см", -100.0, 100.0, 0.0, 1.0)
         tilt_x_deg = st.slider("Наклон оптической оси по X, °", -60.0, 60.0, 0.0, 1.0)
         tilt_y_deg = st.slider("Наклон оптической оси по Y, °", -60.0, 60.0, 0.0, 1.0)
 
@@ -297,9 +297,7 @@ if show_3d:
         src_unit = np.array([0.0, 0.0, 1.0])
 
     # Угол падения между нормалью и направлением от центра сцены
-    angle_to_center = np.degrees(
-        np.arccos(np.clip(np.abs(np.dot(normal_unit, src_unit)), -1.0, 1.0))
-    )
+    angle_to_center = np.degrees(np.arccos(np.clip(np.abs(np.dot(normal_unit, src_unit)), -1.0, 1.0)))
 
     # Вычисление ориентации источника по заданному наклону (tilt) — направлено в сторону центра по азимуту
     th_src = np.radians(source_tilt_deg)
@@ -317,9 +315,7 @@ if show_3d:
     src_dir_unit = src_dir / np.linalg.norm(src_dir)
 
     # Угол между нормалью плоскости и направлением источника
-    angle_source = np.degrees(
-        np.arccos(np.clip(np.abs(np.dot(normal_unit, src_dir_unit)), -1.0, 1.0))
-    )
+    angle_source = np.degrees(np.arccos(np.clip(np.abs(np.dot(normal_unit, src_dir_unit)), -1.0, 1.0)))
 
     # Отрисовка нормали (стрелка) и вектора от источника
     arrow_scale = max(plane_w, plane_h, 100) * 0.25
@@ -395,7 +391,7 @@ if show_3d:
     with col_info1:
         st.metric(" Источник", f"({src_x}, {src_y}, {src_z})")
     with col_info2:
-        st.metric(" Объект", f"{plane_w:.0f}×{plane_h:.0f} мм")
+        st.metric(" Объект", f"{plane_w:.1f}×{plane_h:.1f} см")
     with col_info3:
         attenuation = 1.0 / (distance**2 + 1e-6)
         st.metric(" 1/r²", f"{attenuation:.6f}")
@@ -552,8 +548,7 @@ if run:
     # маленькое изображение 32x32 билинейно (размытие). Принудительно включаем
     # nearest-neighbor рендеринг — пиксели остаются чёткими, как в outputs/.
     st.markdown(
-        "<style>[data-testid=\"stImage\"] img { image-rendering: pixelated; "
-        "image-rendering: crisp-edges; }</style>",
+        '<style>[data-testid="stImage"] img { image-rendering: pixelated; image-rendering: crisp-edges; }</style>',
         unsafe_allow_html=True,
     )
 

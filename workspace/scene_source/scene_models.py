@@ -26,6 +26,7 @@ class SceneSourceInput:
     power: float = 1.0  # мощность источника, Вт
     tilt_deg: float = 0.0  # угол наклона источника к нормали поверхности, градусы
 
+
 @dataclass
 class SceneSourceArtifacts:
     axis: SpectralAxis
